@@ -11,19 +11,26 @@ com o time de vendas.
 ## Arquitetura
 
 - FastAPI expondo `POST /webhook/sdr` (fluxo sincrono, responde em ate 30s).
-- Google Gemini com structured output (schema: messages, tags, exit).
+- Google Gemini com structured output (messages, tags, exit + campos de controle).
 - Autenticacao por segredo compartilhado (Bearer), isentando turnos de teste.
 - Base de conhecimento de produto em `knowledge/vonix_sdr_kb.md`, carregada na
   instrucao de sistema (editavel sem mexer no codigo).
+- Agendamento da apresentacao no Google Calendar (OAuth refresh token, janela
+  09:00-16:00, reunioes de 1h, dias uteis).
+- Avisos no Slack (Incoming Webhook): lead qualificado apos agendar e lead
+  desqualificado na hora.
 - Deploy no Render via `Procfile`.
 
 ## Estrutura
 
 ```
-main.py                     webhook + integracao Gemini + formatacao Vonix
+main.py                     webhook + Gemini + orquestracao (Calendar/Slack) + formato Vonix
 prompt.py                   persona, regras e carregamento da base de conhecimento
+calendar_client.py          Google Calendar: listar horarios livres e criar evento
+slack_client.py             Slack: notificacoes via Incoming Webhook
 knowledge/vonix_sdr_kb.md   base de conhecimento (produto Vonix) [rascunho]
-docs/qualificacao.md        framework de qualificacao e roteiro [rascunho]
+docs/qualificacao.md        framework de qualificacao e roteiro
+docs/integracoes.md         design e decisoes das integracoes Calendar/Slack
 docs/config-bloco-vonix.md  como configurar o bloco no VonixCC
 ```
 
@@ -32,6 +39,13 @@ docs/config-bloco-vonix.md  como configurar o bloco no VonixCC
 Variaveis de ambiente (veja `.env.example`):
 - `GOOGLE_API_KEY`: chave da API do Gemini.
 - `VONIX_TOKEN`: segredo compartilhado com o bloco da Vonix (`openssl rand -hex 32`).
+- `GOOGLE_OAUTH_CLIENT_ID` / `GOOGLE_OAUTH_CLIENT_SECRET` / `GOOGLE_OAUTH_REFRESH_TOKEN`:
+  credenciais OAuth da conta Google que recebe as reunioes. `GOOGLE_CALENDAR_ID`
+  (padrao `primary`) e `TIMEZONE` (padrao `America/Sao_Paulo`).
+- `SLACK_WEBHOOK_URL`: Incoming Webhook do canal de avisos.
+
+O refresh token OAuth e gerado uma vez com o consentimento da conta Google
+(escopo `calendar`). Posso te guiar nesse passo quando formos ligar em producao.
 
 ## Execucao local
 

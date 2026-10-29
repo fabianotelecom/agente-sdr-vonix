@@ -1,80 +1,112 @@
 # Framework de Qualificação e Roteiro: SDR Vonix (WhatsApp)
 
-> Status: RASCUNHO para você ajustar. Objetivo do fluxo: qualificar o lead e agendar uma demonstração.
+> Escopo confirmado pelo Fabiano em 29/10/2026. Canal: WhatsApp.
 
 ## 1. Objetivo do SDR
 
-Captar e fazer a triagem de leads inbound no WhatsApp, qualificar segundo os critérios abaixo e, quando houver fit, agendar uma demonstração com o time de vendas. Leads sem fit recebem material e são encerrados com cordialidade. O SDR não cota preços nem fecha contrato.
+Fazer a triagem de leads inbound no WhatsApp e identificar se o lead é uma
+empresa que tem (ou precisa de) uma operação de atendimento ao cliente que a
+Vonix atende. Havendo fit, o SDR oferece material e agenda uma apresentação.
+O SDR não cota preços nem fecha contrato.
 
-## 2. Critérios de qualificação (rascunho)
+## 2. ICP (perfil de cliente ideal)
 
-A ideia é capturar, de forma natural ao longo da conversa (sem interrogatório), os campos abaixo. Cada um vira uma variável de retorno quando fizer sentido.
+Qualquer empresa que possui uma área de atendimento a clientes, por qualquer
+canal de interatividade (voz, chat, WhatsApp, e-mail, etc.). Não há corte por
+tamanho: o objetivo é confirmar que existe uma operação de atendimento real.
 
-| # | O que capturar | Por que importa | Variável sugerida |
-|---|---|---|---|
-| 1 | Empresa e segmento | Contexto e fit de caso (SAC, cobrança, vendas, crédito) | `empresa`, `segmento` |
-| 2 | Tamanho da operação (nº de operadores/atendentes/PAs) | Dimensiona a conta; mínimo comercial é ~20 ramais | `n_operadores` |
-| 3 | Canais usados hoje (voz, WhatsApp, chat, e-mail) | Fit de omnichannel; dor de múltiplas plataformas | `canal_atual` |
-| 4 | Volume aproximado de atendimentos/chamadas por mês | Dimensiona discador/URA; urgência da dor | `volume` |
-| 5 | Plataforma/concorrente atual e principal dor | Gatilho de troca; onde a Vonix ganha | `plataforma_atual`, `dor_principal` |
-| 6 | Objetivo (reduzir custo, discador, IA, métricas, escalar) | Direciona o pitch e o caso | `objetivo` |
-| 7 | Papel do contato (decisor, influenciador, usuário) | Define se avança para demo ou nutre | `papel_contato` |
-| 8 | Urgência / prazo para decidir | Prioriza o lead | `urgencia` |
+## 3. Critérios de qualificação (o que descobrir)
 
-## 3. Lógica de corte (rascunho)
+Capturar de forma natural, ao longo da conversa (sem interrogatório):
 
-- QUALIFICADO (segue para agendar demo) quando, no mínimo:
-  - tem uma operação de atendimento real (indício de ~10+ operadores OU volume relevante de chamadas/atendimentos), E
-  - demonstrou uma dor clara que a Vonix resolve (item da seção 2 da base de conhecimento), E
-  - o contato é decisor ou influenciador (ou consegue levar a decisão adiante).
-- NUTRIR (envia material, encerra sem demo) quando há interesse mas falta fit claro agora (operação muito pequena, sem dor definida, ou contato sem influência).
-- FORA DE ESCOPO quando já é cliente, é suporte/dúvida técnica, concorrente, ou não é prospect.
-
-> Ajuste os limiares (nº de operadores, volume) conforme o ICP real da Vonix.
-
-## 4. Saídas do bloco (tools) a configurar no VonixCC
-
-O agente escolhe a saída preenchendo `exit.tool` com o `id` da ferramenta configurada no bloco. Sugestão:
-
-| Tool (id sugerido) | Quando usar | Tipo no fluxo |
+| # | O que capturar | Variável sugerida |
 |---|---|---|
-| `agendar_demo` | Lead qualificado pronto para demonstração | transferência/agendamento |
-| `nutrir_lead` | Interesse sem fit imediato: enviar material e encerrar | transferência/fim |
-| `falar_com_humano` | Lead pede atendente humano a qualquer momento | transferência |
-| `fora_de_escopo` | Já é cliente, suporte, não é prospect | transferência/fim |
+| 1 | Nº de operadores/agentes da empresa | `n_operadores` |
+| 2 | Canais de atendimento usados hoje (voz, chat/WhatsApp, etc.) | `canal_atual` |
+| 3 | Volume de atendimentos por dia | `volume_dia` |
+| 4 | Dor principal do cliente hoje | `dor_principal` |
+| 5 | Se já usam algum concorrente (e qual) | `concorrente_atual` |
+
+Complementares, quando surgirem: `empresa`, `segmento`, `papel_contato`, `urgencia`.
+
+## 4. Lógica de corte
+
+- QUALIFICADO: é uma empresa com área de atendimento a clientes (tem operação
+  real, independentemente do tamanho). Caminho: oferecer material e agendar a
+  apresentação.
+- DESQUALIFICADO: não é prospect (pessoa física sem operação, já é cliente,
+  suporte técnico, concorrente, ou sem qualquer área de atendimento). Caminho:
+  encerrar com cordialidade e avisar o Fabiano no Slack imediatamente.
+- URGENTE: se o lead diz que é urgente, transferir direto para um vendedor.
+
+## 5. Saídas do bloco (tools) a configurar no VonixCC
+
+O agente preenche `exit.tool` com o `id` da ferramenta configurada no bloco.
+
+| Tool (id) | Quando usar |
+|---|---|
+| `transferir_vendedor` | Lead qualificado que diz ter urgência |
+| `agendar_demo` | Lead qualificado com disponibilidade para a apresentação |
+| `enviar_material` | Lead qualificado: oferecer e enviar o material (arquivo no fluxo) |
 
 Quando `exit` é nulo, o agente continua a conversa no mesmo bloco.
+Observação: a notificação ao Slack (qualificado/desqualificado) é feita pelo
+backend, não é uma tool do bloco.
 
-## 5. Tags sugeridas
+## 6. Ações do backend (fora do fluxo Vonix)
 
-`sdr_lead`, `qualificado`, `nao_qualificado`, `pediu_humano`, `fora_de_escopo`, mais uma de segmento quando identificado (`seg_sac`, `seg_cobranca`, `seg_vendas`, `seg_credito`).
+- Agendamento no Google Calendar: ao confirmar a apresentação, o backend
+  consulta a agenda e cria um evento de 1 hora, somente entre 09:00 e 16:00.
+  O agente apresenta os horários livres e o lead escolhe.
+- Notificação no Slack:
+  - Lead QUALIFICADO (após agendar): avisar o Fabiano com o resumo e o horário.
+  - Lead DESQUALIFICADO: avisar o Fabiano imediatamente com o resumo.
+- Detalhes de implementação e decisões em [docs/integracoes.md](integracoes.md).
 
-## 6. Variáveis de retorno (return_variables)
+## 7. Regras de agendamento (Calendar)
 
-Só gravamos chaves que o bloco listar em `return_variables`, e só valores string/número/booleano. Candidatas: `note` (resumo do caso para o vendedor), `empresa`, `segmento`, `n_operadores`, `canal_atual`, `volume`, `plataforma_atual`, `dor_principal`, `objetivo`, `papel_contato`, `urgencia`, `qualificado` (booleano).
+- Janela: somente entre 09:00 e 16:00 (horário da empresa).
+- Duração: 1 hora por reunião.
+- O agente oferece as opções livres encontradas na agenda; o lead escolhe uma.
+- Após criar o evento, confirma o horário ao lead e notifica o Slack.
 
-## 7. Roteiro de conversa (persona e etapas)
+## 8. Tags sugeridas
 
-Persona: consultor(a) SDR da Vonix. Tom profissional, cordial, consultivo e objetivo. Mensagens curtas, adequadas ao WhatsApp (sem textão, sem markdown pesado). Uma pergunta por vez. Nunca inventa dados; usa só a base de conhecimento.
+`sdr_lead`, `qualificado`, `desqualificado`, `urgente`, `agendado`, mais uma de
+segmento quando identificado.
+
+## 9. Variáveis de retorno (return_variables)
+
+Só gravamos chaves listadas em `return_variables`, valores string/número/booleano:
+`note` (resumo para o vendedor), `qualificado` (booleano), `n_operadores`,
+`canal_atual`, `volume_dia`, `dor_principal`, `concorrente_atual`,
+`data_agendada` (quando houver).
+
+## 10. Roteiro de conversa (persona e etapas)
+
+Persona: consultor(a) SDR da Vonix. Tom profissional, cordial, consultivo e
+objetivo. Mensagens curtas, adequadas ao WhatsApp. Uma pergunta por vez. Nunca
+inventa dados; usa só a base de conhecimento.
 
 Etapas:
-1. Abertura: cumprimenta, se apresenta como assistente da Vonix e entende o motivo do contato.
-2. Descoberta: faz perguntas naturais para capturar empresa, segmento, tamanho da operação, canais, volume, dor e objetivo (itens da seção 2). Uma de cada vez.
-3. Conexão de valor: relaciona a dor do lead a um recurso/caso da Vonix (ex.: múltiplas plataformas -> omnichannel; custo de ligação -> tarifação em tempo real; produtividade -> discador preditivo + monitoria com IA).
-4. Qualificação: aplica a lógica de corte (seção 3).
-5a. Se qualificado: confirma interesse em uma demonstração, coleta melhor dia/horário e contato, resume o caso em `note` e encerra com `exit.tool = agendar_demo`.
-5b. Se nutrir: envia o material (link do site/catálogo a definir), agradece e encerra com `nutrir_lead`.
-5c. Se pedir humano / fora de escopo: usa a tool correspondente.
+1. Abertura: cumprimenta, se apresenta como assistente da Vonix e entende o
+   motivo do contato.
+2. Descoberta: captura os 5 critérios da seção 3, um de cada vez.
+3. Conexão de valor: relaciona a dor do lead a um recurso/caso da Vonix.
+4. Qualificação: aplica a lógica da seção 4.
+5a. Qualificado + urgente: `exit.tool = transferir_vendedor`.
+5b. Qualificado com disponibilidade: oferece material (`enviar_material`) e
+    agenda a apresentação (horários do Calendar) e usa `agendar_demo`.
+5c. Desqualificado: encerra com cordialidade (backend notifica o Slack).
 
 Regras de guarda:
-- Não cotar preços nem condições comerciais; se perguntarem, explica que o time de vendas apresenta a proposta na demonstração.
+- Não cotar preços nem condições comerciais; a proposta é do time de vendas.
 - Não prometer prazos/descontos.
 - Não pedir dados sensíveis (documentos, cartão, senhas).
+- Agendar apenas entre 09:00 e 16:00, reuniões de 1 hora.
 - Respostas sempre em português, curtas e humanas.
 
-## 8. Pontos em aberto para você definir
+## 11. Pontos em aberto para você definir
 
-- Limiares exatos do ICP (nº de operadores e volume mínimos).
-- Link/material oficial para o caminho "nutrir".
-- Destino do agendamento da demo (fila/agente no VonixCC, ou integração de agenda).
-- Se o SDR fará também abordagem outbound ou apenas inbound.
+- Arquivo de material a enviar aos qualificados (você vai ceder).
+- Decisões técnicas das integrações (ver [docs/integracoes.md](integracoes.md)).

@@ -29,19 +29,27 @@ Crie no bloco as ferramentas com estes `id` (o agente preenche `exit.tool` com o
 
 | id | Para onde leva |
 |---|---|
-| `agendar_demo` | Fila/agente de vendas (ou integracao de agenda) para a demonstracao |
-| `nutrir_lead` | Envio de material e encerramento |
-| `falar_com_humano` | Transferencia para atendente humano |
-| `fora_de_escopo` | Encerramento / outro fluxo (cliente atual, suporte) |
+| `transferir_vendedor` | Transferencia imediata para vendedor (lead qualificado urgente) |
+| `agendar_demo` | Confirmacao da apresentacao agendada (evento criado pelo backend) |
+| `enviar_material` | Passo do fluxo que envia o arquivo de material ao lead qualificado |
 
 Garanta tambem uma saida de Fallback (erros, 401, timeout caem nela).
+
+Observacao: a notificacao ao Slack (lead qualificado apos agendar e lead
+desqualificado na hora) e feita pelo backend, nao e uma tool do bloco. O
+agendamento no Google Calendar tambem e feito pelo backend. Veja
+[integracoes.md](integracoes.md).
 
 ## 5. Variaveis de retorno (return_variables)
 
 Liste no bloco as variaveis que o agente pode gravar. Minimo recomendado:
-`note` (resumo para o vendedor) e `qualificado` (booleano). Opcionais:
-`empresa`, `segmento`, `n_operadores`, `canal_atual`, `volume`,
-`plataforma_atual`, `dor_principal`, `objetivo`, `papel_contato`, `urgencia`.
+`note` (resumo para o vendedor), `qualificado` (booleano) e `fase` (controle
+interno do agendamento). Opcionais: `n_operadores`, `canal_atual`, `volume_dia`,
+`dor_principal`, `concorrente_atual`, `data_agendada`.
+
+IMPORTANTE: inclua `fase` em `return_variables`. O backend usa `fase`
+(`triagem` / `agendando`) para saber quando buscar e oferecer horarios do
+Calendar entre os turnos. Sem ela, o agendamento multi-turno nao mantem estado.
 
 > O backend hoje grava `note` e `qualificado`. As demais podem ser habilitadas
 > conforme evoluirmos a extracao estruturada.

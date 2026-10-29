@@ -3,3 +3,5 @@ uvicorn[standard]
 pydantic
 httpx
 google-genai
+google-api-python-client
+google-auth
