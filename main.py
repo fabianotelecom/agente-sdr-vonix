@@ -242,6 +242,19 @@ def _aviso(tipo: str, payload: IncomingMessage, resumo: str, extra: str = "", da
     return "\n".join(linhas)
 
 
+def _tool_id(payload: IncomingMessage, nome_logico: str) -> Optional[str]:
+    """A Vonix envia o id da tool como UUID; o 'name' e o rotulo que configuramos.
+    Resolve o id real procurando pelo name (ou pelo proprio id) igual ao logico."""
+    alvo = nome_logico.strip().lower()
+    for t in payload.tools:
+        if str(t.get("name", "")).strip().lower() == alvo:
+            return t.get("id")
+    for t in payload.tools:
+        if str(t.get("id", "")).strip().lower() == alvo:
+            return t.get("id")
+    return None
+
+
 def _match_slot(escolhido: Optional[datetime], slots: List[datetime]) -> Optional[datetime]:
     """Casa o horario escolhido (ISO do Gemini) com um slot oferecido, tolerando
     diferencas de formato/fuso. Compara ano/mes/dia/hora no fuso do slot."""
@@ -268,7 +281,8 @@ async def aplicar_acoes(data: dict, payload: IncomingMessage, fase: str, slots: 
     resumo = _resumo(data, payload)
 
     if intencao == "urgente":
-        data["exit"] = {"tool": "transferir_vendedor", "note": resumo or None}
+        tid = _tool_id(payload, "transferir_vendedor")
+        data["exit"] = {"tool": tid or "transferir_vendedor", "note": resumo or None}
         _add_tag(data, "urgente")
         await email_client.notificar(_aviso("URGENTE", payload, resumo, data=data))
         return "triagem"
@@ -320,7 +334,8 @@ async def aplicar_acoes(data: dict, payload: IncomingMessage, fase: str, slots: 
                 return "agendando"
             quando = calendar_client.formatar_slot(alvo)
             nota_exit = f"Agendado: {quando}"
-            data["exit"] = {"tool": "agendar_demo", "note": nota_exit}
+            tid = _tool_id(payload, "agendar_demo")
+            data["exit"] = {"tool": tid or "agendar_demo", "note": nota_exit}
             data["data_agendada"] = quando
             _add_tag(data, "agendado")
             link = evento.get("htmlLink", "")
@@ -426,10 +441,10 @@ async def handle_turn(
         # Diagnostico temporario (apenas em teste): revela os ids das tools que a
         # Vonix enviou e o exit que devolvemos, para investigar rejeicoes.
         if payload.is_test:
-            ids = ",".join(str(t.get("id")) for t in payload.tools) or "(vazio)"
+            pares = ", ".join(f"{t.get('name')}:{t.get('id')}" for t in payload.tools) or "(vazio)"
             ex = (resultado.get("exit") or {}).get("tool")
             resultado.setdefault("messages", []).append(
-                {"type": "TEXT", "text": f"[debug] tools={ids} | exit={ex} | fase={nova_fase}"}
+                {"type": "TEXT", "text": f"[debug] tools=[{pares}] | exit={ex} | fase={nova_fase}"}
             )
         return resultado
 
