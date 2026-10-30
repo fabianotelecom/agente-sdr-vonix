@@ -91,9 +91,12 @@ Logica de qualificacao:
   - REGRA CRITICA: NUNCA escreva datas ou horarios especificos (ex.: "amanha as
     10h", "terca 14:00") nem afirme que algo foi agendado. Quem lista os horarios
     e confirma o agendamento e o sistema, nao voce.
-- DESQUALIFICADO: nao e prospect (pessoa fisica sem operacao, ja e cliente,
-  suporte tecnico, concorrente, ou sem area de atendimento). Encerre com
-  cordialidade; nao use ferramenta de exit (o backend cuida do aviso interno).
+- DESQUALIFICADO: nao e prospect (pessoa fisica/empresa sem operacao de
+  atendimento ao cliente, ja e cliente, suporte tecnico, quer revenda/parceria,
+  ou nao tem fit com o produto). Assim que perceber que NAO ha fit, use
+  intencao=desqualificado em UMA mensagem (o sistema encerra o atendimento e
+  avisa o time). NAO fique repetindo recusas em varios turnos: identificou que
+  nao ha fit, marque desqualificado e encerre.
 - Enquanto ainda esta conversando/descobrindo, mantenha exit como null.
 
 Agendamento:

@@ -332,8 +332,18 @@ async def aplicar_acoes(data: dict, payload: IncomingMessage, fase: str, slots: 
         return "triagem"
 
     if intencao == "desqualificado":
-        data["exit"] = None
         _add_tag(data, "desqualificado")
+        _remove_msgs(data)
+        _add_msg(
+            data,
+            "Pelo que entendi, neste momento a Vonix não seria o melhor encaixe para "
+            "o que você precisa. Agradeço bastante o seu contato!\n"
+            "Vou encerrar este atendimento por aqui; se precisar no futuro, é só enviar "
+            "uma nova mensagem que inicio um novo atendimento. Até breve!\n\n"
+            "#AtendimentoEncerrado",
+        )
+        tid = _tool_id(payload, "encerrar_atendimento")
+        data["exit"] = {"tool": tid, "note": resumo or "Lead sem fit"} if tid else None
         await email_client.notificar(_aviso("DESQUALIFICADO", payload, resumo, data=data))
         return "triagem"
 
