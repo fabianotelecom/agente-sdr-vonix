@@ -437,7 +437,8 @@ def formatar_resposta(data: dict, payload: IncomingMessage, nova_fase: str) -> d
         if "qualificado" in payload.return_variables and exit_data.get("tool"):
             variaveis["qualificado"] = exit_data.get("tool") in TOOLS_QUALIFICADO
         if "enviar_material" in payload.return_variables:
-            variaveis["enviar_material"] = "sim" if data.get("enviar_material") else "nao"
+            # "Sim"/"Nao" batendo com a regra Decidir da Vonix ("que contem Sim").
+            variaveis["enviar_material"] = "Sim" if data.get("enviar_material") else "Nao"
         if variaveis:
             data["variables"] = variaveis
 
