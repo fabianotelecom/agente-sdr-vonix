@@ -60,8 +60,10 @@ uvicorn main:app --reload --port 8000
 
 ## Observacoes
 
-- Os nomes de modelo em `MODELS_TO_TRY` (main.py) devem ser confirmados conforme
-  a disponibilidade atual do Gemini.
+- `MODELS_TO_TRY` (main.py) usa `gemini-3.5-flash` (principal), com fallback para
+  `gemini-3.5-flash-lite` e `gemini-flash-lite-latest`. Modelos confirmados em
+  30/10/2026 (os 2.x sairam de linha para generateContent). Structured output
+  validado com o schema do agente.
 - Os headers `X-Vonix-Turn-Id` e `X-Vonix-Attempt` sao tratados como opcionais
   (o contrato oficial marca apenas `Authorization` como obrigatorio). A confirmar
   com o time da Vonix.

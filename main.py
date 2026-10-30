@@ -30,7 +30,7 @@ app = FastAPI(title="SDR Vonix - Agente de IA")
 client = genai.Client()
 
 VONIX_TOKEN = os.environ.get("VONIX_TOKEN", "")
-MODELS_TO_TRY = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.0-flash"]
+MODELS_TO_TRY = ["gemini-3.5-flash", "gemini-3.5-flash-lite", "gemini-flash-lite-latest"]
 TIME_BUDGET = 25
 
 SYSTEM_INSTRUCTION = construir_system_instruction()
