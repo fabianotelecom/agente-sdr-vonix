@@ -205,6 +205,20 @@ def _add_tag(data: dict, tag: str):
     data["tags"] = tags
 
 
+_bg_tasks: set = set()
+
+
+def _notificar_bg(texto: str):
+    """Dispara o e-mail de aviso em segundo plano (nao bloqueia a resposta)."""
+    try:
+        task = asyncio.create_task(email_client.notificar(texto))
+        _bg_tasks.add(task)
+        task.add_done_callback(_bg_tasks.discard)
+    except RuntimeError:
+        # Sem loop em execucao (ex.: testes sincronos): envia direto.
+        asyncio.run(email_client.notificar(texto))
+
+
 def _add_msg(data: dict, texto: str):
     data.setdefault("messages", [])
     data["messages"].append(texto)
@@ -349,7 +363,7 @@ async def aplicar_acoes(data: dict, payload: IncomingMessage, fase: str, slots: 
         tid = _tool_id(payload, "transferir_vendedor")
         data["exit"] = {"tool": tid or "transferir_vendedor", "note": resumo or None}
         _add_tag(data, "urgente")
-        await email_client.notificar(_aviso("URGENTE", payload, resumo, data=data))
+        _notificar_bg(_aviso("URGENTE", payload, resumo, data=data))
         return "triagem"
 
     if intencao == "desqualificado":
@@ -365,7 +379,7 @@ async def aplicar_acoes(data: dict, payload: IncomingMessage, fase: str, slots: 
         )
         tid = _tool_id(payload, "encerrar_atendimento")
         data["exit"] = {"tool": tid, "note": resumo or "Lead sem fit"} if tid else None
-        await email_client.notificar(_aviso("DESQUALIFICADO", payload, resumo, data=data))
+        _notificar_bg(_aviso("DESQUALIFICADO", payload, resumo, data=data))
         return "triagem"
 
     # --- Agendamento: conduzido pelo backend (a IA nao lista nem confirma) ----
@@ -427,7 +441,7 @@ async def aplicar_acoes(data: dict, payload: IncomingMessage, fase: str, slots: 
                 "#AtendimentoEncerrado",
             )
             link = evento.get("htmlLink", "")
-            await email_client.notificar(
+            _notificar_bg(
                 _aviso("QUALIFICADO (agendado)", payload, resumo, f"Reuniao: {quando}\n{link}", data=data)
             )
             return "triagem"
@@ -528,24 +542,7 @@ async def handle_turn(
 
         data = json.loads(response.text)
         nova_fase = await aplicar_acoes(data, payload, fase, slots)
-        resultado = formatar_resposta(data, payload, nova_fase)
-
-        # Diagnostico temporario (apenas em teste): revela os ids das tools que a
-        # Vonix enviou e o exit que devolvemos, para investigar rejeicoes.
-        if payload.is_test:
-            ex = (resultado.get("exit") or {}).get("tool")
-            esperadas = ["note", "qualificado", "fase", "enviar_material", "nome_contato",
-                         "empresa", "email_contato", "n_operadores", "canal_atual",
-                         "volume_dia", "dor_principal", "concorrente_atual", "data_agendada"]
-            recebidas = payload.return_variables or []
-            faltando = [v for v in esperadas if v not in recebidas]
-            resultado.setdefault("messages", []).append(
-                {"type": "TEXT",
-                 "text": (f"[debug] exit={ex} | fase={nova_fase}\n"
-                          f"[debug] return_variables={recebidas}\n"
-                          f"[debug] FALTANDO={faltando or 'nenhuma'}")}
-            )
-        return resultado
+        return formatar_resposta(data, payload, nova_fase)
 
     except HTTPException:
         raise
