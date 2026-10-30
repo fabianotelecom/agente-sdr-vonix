@@ -389,8 +389,11 @@ async def aplicar_acoes(data: dict, payload: IncomingMessage, fase: str, slots: 
             _remove_msgs(data)
             _add_msg(
                 data,
-                f"Perfeito! Sua apresentacao esta agendada para {quando}. "
-                "Enviei o convite com os detalhes para o seu e-mail. Ate la!",
+                f"Perfeito! Sua apresentação está agendada para {quando}. "
+                "Enviei o convite com os detalhes para o seu e-mail.\n"
+                "Vou encerrar esse Atendimento por aqui, se você enviar uma nova "
+                "mensagem eu inicio um novo atendimento, ok? Até lá!\n\n"
+                "#AtendimentoEncerrado",
             )
             link = evento.get("htmlLink", "")
             await email_client.notificar(
