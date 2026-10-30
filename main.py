@@ -319,7 +319,8 @@ async def aplicar_acoes(data: dict, payload: IncomingMessage, fase: str, slots: 
                 _add_msg(data, "Tive um problema ao confirmar o agendamento. Pode tentar outro horario?")
                 return "agendando"
             quando = calendar_client.formatar_slot(alvo)
-            data["exit"] = {"tool": "agendar_demo", "note": f"{resumo} | Agendado: {quando}".strip(" |")}
+            nota_exit = f"Agendado: {quando}"
+            data["exit"] = {"tool": "agendar_demo", "note": nota_exit}
             data["data_agendada"] = quando
             _add_tag(data, "agendado")
             link = evento.get("htmlLink", "")
@@ -420,7 +421,17 @@ async def handle_turn(
 
         data = json.loads(response.text)
         nova_fase = await aplicar_acoes(data, payload, fase, slots)
-        return formatar_resposta(data, payload, nova_fase)
+        resultado = formatar_resposta(data, payload, nova_fase)
+
+        # Diagnostico temporario (apenas em teste): revela os ids das tools que a
+        # Vonix enviou e o exit que devolvemos, para investigar rejeicoes.
+        if payload.is_test:
+            ids = ",".join(str(t.get("id")) for t in payload.tools) or "(vazio)"
+            ex = (resultado.get("exit") or {}).get("tool")
+            resultado.setdefault("messages", []).append(
+                {"type": "TEXT", "text": f"[debug] tools={ids} | exit={ex} | fase={nova_fase}"}
+            )
+        return resultado
 
     except HTTPException:
         raise
