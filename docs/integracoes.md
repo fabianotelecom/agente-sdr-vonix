@@ -48,6 +48,10 @@ atingiu o limite de 10 apps do plano gratuito. E-mail é autocontido e não
 depende de limite de apps. WhatsApp (via API da própria Vonix) fica como
 evolução futura possível.
 
+Origem x destino: o SMTP envia pela conta fabiano.aam@gmail.com
+(`SMTP_USER`), mas os avisos vão para contato@vonix.com.br
+(`ALERTA_EMAIL_DESTINO`). São independentes.
+
 ## 3. Variáveis de ambiente
 
 ```
@@ -61,9 +65,9 @@ TIMEZONE=America/Sao_Paulo
 # E-mail (SMTP / Gmail com senha de app)
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
-SMTP_USER=fabiano.aam@gmail.com
+SMTP_USER=fabiano.aam@gmail.com       # origem (quem envia)
 SMTP_APP_PASSWORD=...
-ALERTA_EMAIL_DESTINO=fabiano.aam@gmail.com
+ALERTA_EMAIL_DESTINO=contato@vonix.com.br   # destino dos avisos
 ```
 
 ## 4. Pontos a confirmar
