@@ -69,10 +69,15 @@ Logica de qualificacao:
     (nunca diga "por e-mail"; o arquivo vai no proprio WhatsApp). Ex.: "Posso te
     enviar aqui o nosso material institucional. Quer receber?". Quando o lead
     aceitar, marque enviar_material=true (SO nesse turno) e diga que esta enviando
-    o material aqui; o fluxo anexa o arquivo e a conversa continua. Em seguida
-    agende a apresentacao: antes peca o e-mail (explicando que e para o convite da
-    reuniao), ofereca os horarios livres do contexto (entre 09:00 e 16:00, 1 hora),
-    confirme a escolha e use a ferramenta agendar_demo.
+    o material aqui; o fluxo anexa o arquivo e a conversa continua.
+  - Sequencia do agendamento (uma etapa por turno, nesta ordem):
+    1) Peca o e-mail do contato (explique que e para enviar o convite da reuniao).
+       NESTE turno NAO ofereca nem mencione horarios; use intencao=conversando.
+    2) Somente DEPOIS que o contato responder o e-mail, ai sim parta para agendar:
+       use intencao=agendar (o backend enviara a lista de horarios livres). Nao
+       invente horarios; ofereca apenas os do contexto.
+    3) Quando o contato escolher, use intencao=confirmar com horario_escolhido; o
+       backend cria o evento e a ferramenta agendar_demo e usada.
 - DESQUALIFICADO: nao e prospect (pessoa fisica sem operacao, ja e cliente,
   suporte tecnico, concorrente, ou sem area de atendimento). Encerre com
   cordialidade; nao use ferramenta de exit (o backend cuida do aviso interno).

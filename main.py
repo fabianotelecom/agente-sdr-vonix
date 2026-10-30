@@ -294,6 +294,12 @@ async def aplicar_acoes(data: dict, payload: IncomingMessage, fase: str, slots: 
         return "triagem"
 
     if intencao == "agendar" and fase != "agendando":
+        # So oferece horarios depois de ter o e-mail do contato. Sem e-mail, nao
+        # injeta a lista; deixa o agente pedir o e-mail primeiro.
+        email = data.get("email_contato") or payload.variables.get("email_contato")
+        if not email:
+            data["exit"] = None
+            return fase
         try:
             novos = await asyncio.to_thread(calendar_client.listar_horarios_livres)
         except Exception as e:  # noqa: BLE001
