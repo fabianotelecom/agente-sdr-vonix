@@ -1,4 +1,5 @@
 .env
+appgmail.txt
 .venv/
 venv/
 __pycache__/

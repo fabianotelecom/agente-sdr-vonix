@@ -1,7 +1,7 @@
 """SDR Vonix: webhook do bloco Agente de IA (Fluxos de Conversa do VonixCC).
 
 Fluxo sincrono (200): recebe o turno, gera a resposta com o Google Gemini,
-executa acoes de backend (agendamento no Google Calendar e aviso no Slack) e
+executa acoes de backend (agendamento no Google Calendar e aviso por e-mail) e
 devolve no formato Vonix (messages / tags / variables / exit).
 
 Contrato: https://vonix.vonixcc.com.br/v1/api-docs/agente-ia
@@ -23,7 +23,7 @@ from google.genai import types
 
 from prompt import construir_system_instruction
 import calendar_client
-import slack_client
+import email_client
 
 app = FastAPI(title="SDR Vonix - Agente de IA")
 
@@ -207,10 +207,10 @@ def _resumo(data: dict, payload: IncomingMessage) -> str:
     return " | ".join(p for p in partes if p).strip()
 
 
-def _aviso_slack(tipo: str, payload: IncomingMessage, resumo: str, extra: str = "") -> str:
+def _aviso(tipo: str, payload: IncomingMessage, resumo: str, extra: str = "") -> str:
     nome = payload.contact.name or "sem nome"
     fone = payload.contact.phone or "sem telefone"
-    linhas = [f"*Lead {tipo}* ({payload.channel})", f"Contato: {nome} / {fone}"]
+    linhas = [f"Lead {tipo} ({payload.channel})", f"Contato: {nome} / {fone}"]
     if resumo:
         linhas.append(f"Resumo: {resumo}")
     if extra:
@@ -233,13 +233,13 @@ async def aplicar_acoes(data: dict, payload: IncomingMessage, fase: str, slots: 
     if intencao == "urgente":
         data["exit"] = {"tool": "transferir_vendedor", "note": resumo or None}
         _add_tag(data, "urgente")
-        await slack_client.notificar(_aviso_slack("URGENTE", payload, resumo))
+        await email_client.notificar(_aviso("URGENTE", payload, resumo))
         return "triagem"
 
     if intencao == "desqualificado":
         data["exit"] = None
         _add_tag(data, "desqualificado")
-        await slack_client.notificar(_aviso_slack("DESQUALIFICADO", payload, resumo))
+        await email_client.notificar(_aviso("DESQUALIFICADO", payload, resumo))
         return "triagem"
 
     if intencao == "agendar" and fase != "agendando":
@@ -278,8 +278,8 @@ async def aplicar_acoes(data: dict, payload: IncomingMessage, fase: str, slots: 
             data["data_agendada"] = quando
             _add_tag(data, "agendado")
             link = evento.get("htmlLink", "")
-            await slack_client.notificar(
-                _aviso_slack("QUALIFICADO (agendado)", payload, resumo, f"Reuniao: {quando}\n{link}")
+            await email_client.notificar(
+                _aviso("QUALIFICADO (agendado)", payload, resumo, f"Reuniao: {quando}\n{link}")
             )
             return "triagem"
         _add_msg(data, "Nao consegui confirmar esse horario. Pode escolher um dos horarios que te enviei?")

@@ -35,7 +35,7 @@ Crie no bloco as ferramentas com estes `id` (o agente preenche `exit.tool` com o
 
 Garanta tambem uma saida de Fallback (erros, 401, timeout caem nela).
 
-Observacao: a notificacao ao Slack (lead qualificado apos agendar e lead
+Observacao: a notificacao por e-mail (lead qualificado apos agendar e lead
 desqualificado na hora) e feita pelo backend, nao e uma tool do bloco. O
 agendamento no Google Calendar tambem e feito pelo backend. Veja
 [integracoes.md](integracoes.md).

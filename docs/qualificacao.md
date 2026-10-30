@@ -36,7 +36,7 @@ Complementares, quando surgirem: `empresa`, `segmento`, `papel_contato`, `urgenc
   apresentação.
 - DESQUALIFICADO: não é prospect (pessoa física sem operação, já é cliente,
   suporte técnico, concorrente, ou sem qualquer área de atendimento). Caminho:
-  encerrar com cordialidade e avisar o Fabiano no Slack imediatamente.
+  encerrar com cordialidade e avisar o Fabiano por e-mail imediatamente.
 - URGENTE: se o lead diz que é urgente, transferir direto para um vendedor.
 
 ## 5. Saídas do bloco (tools) a configurar no VonixCC
@@ -50,7 +50,7 @@ O agente preenche `exit.tool` com o `id` da ferramenta configurada no bloco.
 | `enviar_material` | Lead qualificado: oferecer e enviar o material (arquivo no fluxo) |
 
 Quando `exit` é nulo, o agente continua a conversa no mesmo bloco.
-Observação: a notificação ao Slack (qualificado/desqualificado) é feita pelo
+Observação: a notificação por e-mail (qualificado/desqualificado) é feita pelo
 backend, não é uma tool do bloco.
 
 ## 6. Ações do backend (fora do fluxo Vonix)
@@ -58,7 +58,7 @@ backend, não é uma tool do bloco.
 - Agendamento no Google Calendar: ao confirmar a apresentação, o backend
   consulta a agenda e cria um evento de 1 hora, somente entre 09:00 e 16:00.
   O agente apresenta os horários livres e o lead escolhe.
-- Notificação no Slack:
+- Notificação por e-mail:
   - Lead QUALIFICADO (após agendar): avisar o Fabiano com o resumo e o horário.
   - Lead DESQUALIFICADO: avisar o Fabiano imediatamente com o resumo.
 - Detalhes de implementação e decisões em [docs/integracoes.md](integracoes.md).
@@ -68,7 +68,7 @@ backend, não é uma tool do bloco.
 - Janela: somente entre 09:00 e 16:00 (horário da empresa).
 - Duração: 1 hora por reunião.
 - O agente oferece as opções livres encontradas na agenda; o lead escolhe uma.
-- Após criar o evento, confirma o horário ao lead e notifica o Slack.
+- Após criar o evento, confirma o horário ao lead e notifica por e-mail.
 
 ## 8. Tags sugeridas
 
@@ -97,7 +97,7 @@ Etapas:
 5a. Qualificado + urgente: `exit.tool = transferir_vendedor`.
 5b. Qualificado com disponibilidade: oferece material (`enviar_material`) e
     agenda a apresentação (horários do Calendar) e usa `agendar_demo`.
-5c. Desqualificado: encerra com cordialidade (backend notifica o Slack).
+5c. Desqualificado: encerra com cordialidade (backend notifica por e-mail).
 
 Regras de guarda:
 - Não cotar preços nem condições comerciais; a proposta é do time de vendas.

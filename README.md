@@ -17,20 +17,20 @@ com o time de vendas.
   instrucao de sistema (editavel sem mexer no codigo).
 - Agendamento da apresentacao no Google Calendar (OAuth refresh token, janela
   09:00-16:00, reunioes de 1h, dias uteis).
-- Avisos no Slack (Incoming Webhook): lead qualificado apos agendar e lead
+- Avisos por e-mail (SMTP/Gmail): lead qualificado apos agendar e lead
   desqualificado na hora.
 - Deploy no Render via `Procfile`.
 
 ## Estrutura
 
 ```
-main.py                     webhook + Gemini + orquestracao (Calendar/Slack) + formato Vonix
+main.py                     webhook + Gemini + orquestracao (Calendar/E-mail) + formato Vonix
 prompt.py                   persona, regras e carregamento da base de conhecimento
 calendar_client.py          Google Calendar: listar horarios livres e criar evento
-slack_client.py             Slack: notificacoes via Incoming Webhook
+email_client.py             E-mail: notificacoes via SMTP (Gmail)
 knowledge/vonix_sdr_kb.md   base de conhecimento (produto Vonix) [rascunho]
 docs/qualificacao.md        framework de qualificacao e roteiro
-docs/integracoes.md         design e decisoes das integracoes Calendar/Slack
+docs/integracoes.md         design e decisoes das integracoes Calendar/E-mail
 docs/config-bloco-vonix.md  como configurar o bloco no VonixCC
 ```
 
@@ -42,7 +42,9 @@ Variaveis de ambiente (veja `.env.example`):
 - `GOOGLE_OAUTH_CLIENT_ID` / `GOOGLE_OAUTH_CLIENT_SECRET` / `GOOGLE_OAUTH_REFRESH_TOKEN`:
   credenciais OAuth da conta Google que recebe as reunioes. `GOOGLE_CALENDAR_ID`
   (padrao `primary`) e `TIMEZONE` (padrao `America/Sao_Paulo`).
-- `SLACK_WEBHOOK_URL`: Incoming Webhook do canal de avisos.
+- `SMTP_USER` / `SMTP_APP_PASSWORD` / `ALERTA_EMAIL_DESTINO`: envio dos avisos
+  por e-mail (Gmail com senha de app). `SMTP_HOST` (padrao `smtp.gmail.com`) e
+  `SMTP_PORT` (padrao `587`).
 
 O refresh token OAuth e gerado uma vez com o consentimento da conta Google
 (escopo `calendar`). Posso te guiar nesse passo quando formos ligar em producao.

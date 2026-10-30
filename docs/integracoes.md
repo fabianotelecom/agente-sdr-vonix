@@ -1,80 +1,73 @@
-# Integrações: Google Calendar e Slack
+# Integrações: Google Calendar e E-mail
 
-Este documento descreve o design das duas integrações do SDR e as decisões que
-precisam ser confirmadas antes da implementação.
+Design das duas integrações de backend do SDR, com as decisões já tomadas.
 
 ## 1. Google Calendar (agendamento da apresentação)
 
 ### O que o backend faz
 1. Quando o lead qualificado quer agendar, o backend consulta a agenda e lista
    os horários livres (slots de 1h) entre 09:00 e 16:00 nos próximos dias úteis.
-2. O agente apresenta 2 ou 3 opções ao lead pelo WhatsApp.
+2. O agente apresenta as opções ao lead pelo WhatsApp.
 3. O lead escolhe; o backend cria o evento de 1 hora e confirma o horário.
-4. O backend notifica o Slack.
+4. O backend notifica por e-mail (ver seção 2).
 
-### Observação sobre "usar a Gemini para acessar o Google"
+### Sobre "usar a Gemini para acessar o Google"
 O Gemini gera a conversa, mas quem acessa a agenda é o backend, via Google
 Calendar API (biblioteca oficial). O fluxo é determinístico (consulta de
 free/busy e criação de evento), para ser confiável e caber no tempo do turno.
-Opcionalmente, podemos expor isso ao Gemini como function calling; na primeira
-versão, o backend controla as etapas por estado da conversa.
 
-### Autenticação (DECISÃO NECESSÁRIA)
-A forma de autenticar o backend no Google depende do tipo da conta que vai
-receber as reuniões:
-- Conta Workspace (ex.: fabiano@vonix.com.br): conta de serviço com delegação
-  de domínio, ou OAuth. Mais controlável para empresa.
-- Gmail pessoal (ex.: ...@gmail.com): OAuth com refresh token (fluxo de consentimento
-  uma vez; guardamos o refresh token como env var). Conta de serviço não acessa
-  agenda de Gmail pessoal diretamente.
+### Autenticação (DEFINIDO)
+Conta Gmail pessoal (fabiano.aam@gmail.com) com OAuth + refresh token. O
+consentimento é feito uma vez (escopo `https://www.googleapis.com/auth/calendar`)
+pelo script `scripts/gerar_refresh_token.py`; o refresh token fica como variável
+de ambiente. Cliente OAuth do tipo "App para computador" no projeto
+`agente-sdr-vonix` do Google Cloud.
 
-Escopo necessário: `https://www.googleapis.com/auth/calendar` (ou
-`calendar.events` + `calendar.readonly`).
+Status: refresh token gerado e validado (listagem de horários livres testada
+contra a agenda real).
 
 ### Estado da conversa (multi-turno)
-Usamos `chat_id` como id de sessão e variáveis do fluxo para guardar a fase
-(ex.: `fase=aguardando_escolha_horario`) e os slots oferecidos, já que o
-agendamento acontece ao longo de alguns turnos.
+Usamos `chat_id` como id de sessão e a variável de fluxo `fase`
+(`triagem` / `agendando`) para saber quando buscar e oferecer horários entre os
+turnos. Por isso `fase` precisa estar em `return_variables` no bloco.
 
-## 2. Slack (notificações ao Fabiano)
+## 2. E-mail (notificações ao Fabiano)
 
 ### Quando notifica
-- Lead QUALIFICADO (após agendar): resumo do lead + horário marcado.
+- Lead QUALIFICADO (após agendar): resumo do lead + horário marcado + link do evento.
 - Lead DESQUALIFICADO: resumo do lead, imediatamente.
+- Lead URGENTE: resumo do lead (além de transferir_vendedor).
 
-### Método (DECISÃO NECESSÁRIA)
-- Incoming Webhook: simples, posta em um canal fixo. Basta uma URL como env var.
-  Recomendado para começar.
-- Bot token (chat.postMessage): permite DM e vários canais, exige app Slack e
-  escopos. Mais flexível.
+### Método (DEFINIDO)
+Envio por SMTP com Gmail (senha de app). Implementado em `email_client.py`
+(biblioteca padrão `smtplib`, sem dependência extra). A primeira linha do aviso
+vira o assunto (prefixado com `[SDR Vonix]`); o restante vai no corpo.
 
-### Destino (DECISÃO NECESSÁRIA)
-- Um canal dedicado (ex.: #sdr-leads), ou
-- DM direta para o Fabiano.
+Decisão: trocamos o Slack por e-mail porque o workspace Slack disponível
+atingiu o limite de 10 apps do plano gratuito. E-mail é autocontido e não
+depende de limite de apps. WhatsApp (via API da própria Vonix) fica como
+evolução futura possível.
 
-## 3. Variáveis de ambiente previstas (a adicionar)
+## 3. Variáveis de ambiente
 
 ```
-# Google Calendar
-GOOGLE_CALENDAR_ID=primary            # ou o id do calendário dedicado
-GOOGLE_OAUTH_CLIENT_ID=...            # se OAuth
-GOOGLE_OAUTH_CLIENT_SECRET=...        # se OAuth
-GOOGLE_OAUTH_REFRESH_TOKEN=...        # se OAuth (gmail pessoal)
-# ou, se conta de serviço:
-GOOGLE_SERVICE_ACCOUNT_JSON=...       # conteúdo/credencial da service account
+# Google Calendar (OAuth, Gmail pessoal)
+GOOGLE_OAUTH_CLIENT_ID=...
+GOOGLE_OAUTH_CLIENT_SECRET=...
+GOOGLE_OAUTH_REFRESH_TOKEN=...
+GOOGLE_CALENDAR_ID=primary
+TIMEZONE=America/Sao_Paulo
 
-# Slack
-SLACK_WEBHOOK_URL=...                 # se Incoming Webhook
-# ou
-SLACK_BOT_TOKEN=...                   # se bot
-SLACK_CHANNEL=#sdr-leads              # destino
+# E-mail (SMTP / Gmail com senha de app)
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=fabiano.aam@gmail.com
+SMTP_APP_PASSWORD=...
+ALERTA_EMAIL_DESTINO=fabiano.aam@gmail.com
 ```
 
-## 4. Decisões pendentes (resumo)
+## 4. Pontos a confirmar
 
-1. Conta/calendário que recebe as reuniões (Workspace vonix.com.br ou Gmail pessoal).
-2. Método de auth no Google (conta de serviço com delegação ou OAuth refresh token).
-3. Método do Slack (Incoming Webhook ou bot token).
-4. Destino no Slack (canal dedicado ou DM).
-5. Fuso horário da empresa para a janela 09:00 a 16:00 (presumo America/Sao_Paulo).
-6. Dias válidos para agendar (presumo dias úteis, seg a sex).
+1. Fuso horário da janela 09:00 a 16:00: adotado America/Sao_Paulo.
+2. Dias válidos para agendar: adotado dias úteis (seg a sex).
+3. Senha de app do Gmail para SMTP: a gerar (2FA + senha de app).
