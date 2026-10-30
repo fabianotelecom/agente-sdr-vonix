@@ -38,6 +38,13 @@ SYSTEM_INSTRUCTION = construir_system_instruction()
 
 TOOLS_QUALIFICADO = ("agendar_demo", "transferir_vendedor")
 
+# Link do material institucional (enviado como texto na conversa, pois o "Segue o
+# fluxo" do bloco nao dispara com exit=null). Configuravel por env.
+MATERIAL_URL = os.environ.get(
+    "MATERIAL_URL",
+    "https://drive.google.com/file/d/1yyFko-aEMEiFzRbrmtr1P5ia-5a56hkt/view?usp=sharing",
+)
+
 
 # --- Modelos de entrada (contrato Vonix) -----------------------------------
 class Contact(BaseModel):
@@ -323,6 +330,11 @@ async def aplicar_acoes(data: dict, payload: IncomingMessage, fase: str, slots: 
     """Executa as acoes de backend conforme a intencao. Retorna a nova fase."""
     intencao = data.get("intencao") or "conversando"
     resumo = _resumo(data, payload)
+
+    # Envio do material pela propria conversa (link em texto), independente do
+    # "Segue o fluxo" do bloco (que nao dispara com exit=null).
+    if data.get("enviar_material") and MATERIAL_URL:
+        _add_msg(data, f"Segue o nosso material institucional: {MATERIAL_URL}")
 
     if intencao == "urgente":
         tid = _tool_id(payload, "transferir_vendedor")
