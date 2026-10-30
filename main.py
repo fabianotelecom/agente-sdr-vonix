@@ -35,7 +35,7 @@ TIME_BUDGET = 25
 
 SYSTEM_INSTRUCTION = construir_system_instruction()
 
-TOOLS_QUALIFICADO = ("agendar_demo", "transferir_vendedor", "enviar_material")
+TOOLS_QUALIFICADO = ("agendar_demo", "transferir_vendedor")
 
 
 # --- Modelos de entrada (contrato Vonix) -----------------------------------
@@ -84,6 +84,13 @@ class GeminiAgentResponse(BaseModel):
         default=None, description="ISO exato do horario escolhido, dentre os oferecidos no contexto"
     )
     resumo_lead: Optional[str] = Field(default=None, description="Resumo do lead para o vendedor")
+    enviar_material: bool = Field(
+        default=False,
+        description=(
+            "true apenas no turno em que o lead qualificado aceita receber o material. "
+            "O fluxo da Vonix envia o arquivo; a conversa continua normalmente (exit nulo)."
+        ),
+    )
     n_operadores: Optional[str] = None
     canal_atual: Optional[str] = None
     volume_dia: Optional[str] = None
@@ -309,6 +316,8 @@ def formatar_resposta(data: dict, payload: IncomingMessage, nova_fase: str) -> d
                 variaveis[nome] = valor
         if "qualificado" in payload.return_variables and exit_data.get("tool"):
             variaveis["qualificado"] = exit_data.get("tool") in TOOLS_QUALIFICADO
+        if "enviar_material" in payload.return_variables:
+            variaveis["enviar_material"] = "sim" if data.get("enviar_material") else "nao"
         if variaveis:
             data["variables"] = variaveis
 
@@ -320,9 +329,9 @@ def formatar_resposta(data: dict, payload: IncomingMessage, nova_fase: str) -> d
         ][:10]
 
     # Remove campos internos que nao fazem parte do contrato Vonix.
-    for chave in ("intencao", "horario_escolhido", "resumo_lead", "n_operadores",
-                  "canal_atual", "volume_dia", "dor_principal", "concorrente_atual",
-                  "data_agendada"):
+    for chave in ("intencao", "horario_escolhido", "resumo_lead", "enviar_material",
+                  "n_operadores", "canal_atual", "volume_dia", "dor_principal",
+                  "concorrente_atual", "data_agendada"):
         data.pop(chave, None)
 
     return data

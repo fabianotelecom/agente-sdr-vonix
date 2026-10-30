@@ -25,15 +25,23 @@ Sugestao inicial para WhatsApp:
 
 ## 4. Ferramentas (saidas) a criar no bloco
 
-Crie no bloco as ferramentas com estes `id` (o agente preenche `exit.tool` com o id):
+Crie no bloco as ferramentas da IA com estes nomes (o nome e o id que a Vonix
+manda no payload e com o qual o agente preenche `exit.tool`):
 
-| id | Para onde leva |
-|---|---|
-| `transferir_vendedor` | Transferencia imediata para vendedor (lead qualificado urgente) |
-| `agendar_demo` | Confirmacao da apresentacao agendada (evento criado pelo backend) |
-| `enviar_material` | Passo do fluxo que envia o arquivo de material ao lead qualificado |
+| Nome (id) | Tipo na Vonix | Para onde leva |
+|---|---|---|
+| `transferir_vendedor` | Transferir para fila | Transferencia imediata para vendedor (lead urgente) |
+| `agendar_demo` | Finalizar | Encerra apos a apresentacao agendada (evento criado pelo backend) |
 
 Garanta tambem uma saida de Fallback (erros, 401, timeout caem nela).
+
+O envio do material NAO e uma ferramenta. O agente marca a variavel de retorno
+`enviar_material` como `sim` no turno em que o lead aceita receber o arquivo, e
+mantem a conversa (exit nulo). No fluxo, na saida "Segue o fluxo", use uma
+Condicao: se `enviar_material == sim`, direcione para um no de Enviar midia (o
+PDF do material) e volte para o bloco do agente; senao, volte direto para o
+bloco. Assim o arquivo chega na mesma conversa e o papo continua para o
+agendamento.
 
 Observacao: a notificacao por e-mail (lead qualificado apos agendar e lead
 desqualificado na hora) e feita pelo backend, nao e uma tool do bloco. O
@@ -43,16 +51,18 @@ agendamento no Google Calendar tambem e feito pelo backend. Veja
 ## 5. Variaveis de retorno (return_variables)
 
 Liste no bloco as variaveis que o agente pode gravar. Minimo recomendado:
-`note` (resumo para o vendedor), `qualificado` (booleano) e `fase` (controle
-interno do agendamento). Opcionais: `n_operadores`, `canal_atual`, `volume_dia`,
+`note` (resumo para o vendedor), `qualificado` (booleano), `fase` (controle
+interno do agendamento) e `enviar_material` (`sim`/`nao`, dispara o envio do
+arquivo). Opcionais: `n_operadores`, `canal_atual`, `volume_dia`,
 `dor_principal`, `concorrente_atual`, `data_agendada`.
 
 IMPORTANTE: inclua `fase` em `return_variables`. O backend usa `fase`
 (`triagem` / `agendando`) para saber quando buscar e oferecer horarios do
 Calendar entre os turnos. Sem ela, o agendamento multi-turno nao mantem estado.
 
-> O backend hoje grava `note` e `qualificado`. As demais podem ser habilitadas
-> conforme evoluirmos a extracao estruturada.
+Inclua tambem `enviar_material`: o backend devolve `sim` no turno em que o lead
+aceita o material (senao `nao`). E a variavel que a Condicao do fluxo testa para
+enviar o PDF (ver secao 4). Valor padrao sugerido: `nao`.
 
 ## 6. Resposta do agente (contrato)
 

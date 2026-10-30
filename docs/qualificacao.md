@@ -47,7 +47,10 @@ O agente preenche `exit.tool` com o `id` da ferramenta configurada no bloco.
 |---|---|
 | `transferir_vendedor` | Lead qualificado que diz ter urgência |
 | `agendar_demo` | Lead qualificado com disponibilidade para a apresentação |
-| `enviar_material` | Lead qualificado: oferecer e enviar o material (arquivo no fluxo) |
+
+O envio do material não é tool: o agente marca a variável de retorno
+`enviar_material=sim` no turno em que o lead aceita, e mantém `exit` nulo. Uma
+Condição no fluxo testa essa variável e envia o PDF, voltando ao agente.
 
 Quando `exit` é nulo, o agente continua a conversa no mesmo bloco.
 Observação: a notificação por e-mail (qualificado/desqualificado) é feita pelo
@@ -95,7 +98,7 @@ Etapas:
 3. Conexão de valor: relaciona a dor do lead a um recurso/caso da Vonix.
 4. Qualificação: aplica a lógica da seção 4.
 5a. Qualificado + urgente: `exit.tool = transferir_vendedor`.
-5b. Qualificado com disponibilidade: oferece material (`enviar_material`) e
+5b. Qualificado com disponibilidade: oferece material (`enviar_material=sim`) e
     agenda a apresentação (horários do Calendar) e usa `agendar_demo`.
 5c. Desqualificado: encerra com cordialidade (backend notifica por e-mail).
 
