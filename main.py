@@ -331,10 +331,19 @@ async def aplicar_acoes(data: dict, payload: IncomingMessage, fase: str, slots: 
     intencao = data.get("intencao") or "conversando"
     resumo = _resumo(data, payload)
 
-    # Envio do material pela propria conversa (link em texto), independente do
-    # "Segue o fluxo" do bloco (que nao dispara com exit=null).
+    # Envio do material pela propria conversa (link em texto). Ordem garantida:
+    # 1) link, 2) pedido de e-mail. (O "Segue o fluxo" do bloco nao dispara com
+    # exit=null, por isso o envio vai por aqui, com mensagens deterministicas.)
     if data.get("enviar_material") and MATERIAL_URL:
-        _add_msg(data, f"Segue o nosso material institucional: {MATERIAL_URL}")
+        _remove_msgs(data)
+        _add_msg(data, f"Perfeito! Segue o nosso material institucional: {MATERIAL_URL}")
+        _add_msg(
+            data,
+            "Para que eu possa enviar o convite da nossa apresentacao com a agenda, "
+            "qual e o seu melhor e-mail?",
+        )
+        data["exit"] = None
+        return fase
 
     if intencao == "urgente":
         tid = _tool_id(payload, "transferir_vendedor")
