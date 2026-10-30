@@ -8,6 +8,7 @@ Contrato: https://vonix.vonixcc.com.br/v1/api-docs/agente-ia
 """
 
 import os
+import re
 import json
 import time
 import secrets
@@ -268,6 +269,49 @@ def _match_slot(escolhido: Optional[datetime], slots: List[datetime]) -> Optiona
     return None
 
 
+_DIAS_SEMANA = {"segunda": 0, "terca": 1, "terça": 1, "quarta": 2, "quinta": 3, "sexta": 4}
+
+
+def _match_slot_from_text(texto: str, slots: List[datetime]) -> Optional[datetime]:
+    """Tenta identificar, no texto do contato, qual slot ele escolheu. Reconhece
+    hora (11, 11h, 11:00, '11 horas'), dia da semana e data dd/mm."""
+    if not texto or not slots:
+        return None
+    t = texto.lower()
+    # hora: padroes explicitos primeiro
+    horas = set(int(h) for h in re.findall(r'(\d{1,2})\s*(?:h|:\s*\d{2}|horas|hrs|hs)', t))
+    data_dm = None
+    m = re.search(r'\b(\d{1,2})/(\d{1,2})', t)
+    if m:
+        data_dm = (int(m.group(1)), int(m.group(2)))
+    if not horas:  # fallback: numeros isolados plausiveis como hora comercial
+        for n in re.findall(r'\b(\d{1,2})\b', t):
+            h = int(n)
+            if 7 <= h <= 18 and (not data_dm or h not in data_dm):
+                horas.add(h)
+    dia_idx = next((v for k, v in _DIAS_SEMANA.items() if k in t), None)
+    if not horas:
+        return None
+    candidatos = []
+    for s in slots:
+        if s.hour not in horas:
+            continue
+        if data_dm and (s.day, s.month) != data_dm:
+            continue
+        if dia_idx is not None and s.weekday() != dia_idx:
+            continue
+        candidatos.append(s)
+    return candidatos[0] if candidatos else None
+
+
+def _texto_oferta(slots: List[datetime]) -> str:
+    return (
+        "Tenho estes horarios disponiveis:\n"
+        + "\n".join(f"- {calendar_client.formatar_slot(s)}" for s in slots)
+        + "\nQual fica melhor pra voce?"
+    )
+
+
 def _parse_iso(s: str) -> Optional[datetime]:
     try:
         return datetime.fromisoformat(s)
@@ -293,36 +337,34 @@ async def aplicar_acoes(data: dict, payload: IncomingMessage, fase: str, slots: 
         await email_client.notificar(_aviso("DESQUALIFICADO", payload, resumo, data=data))
         return "triagem"
 
-    if intencao == "agendar" and fase != "agendando":
-        # So oferece horarios depois de ter o e-mail do contato. Sem e-mail, nao
-        # injeta a lista; deixa o agente pedir o e-mail primeiro.
+    # --- Agendamento: conduzido pelo backend (a IA nao lista nem confirma) ----
+    # 1) Inicio: lead qualificado quer marcar e ja temos o e-mail. O backend
+    #    descarta qualquer horario inventado pela IA e injeta a lista real.
+    if fase != "agendando" and intencao == "agendar":
         email = data.get("email_contato") or payload.variables.get("email_contato")
         if not email:
             data["exit"] = None
-            return fase
-        try:
-            novos = await asyncio.to_thread(calendar_client.listar_horarios_livres)
-        except Exception as e:  # noqa: BLE001
-            print(f"[calendar] erro ao listar horarios: {type(e).__name__}")
-            novos = []
-        if novos:
-            oferta = "Tenho estes horarios disponiveis:\n" + "\n".join(
-                f"- {calendar_client.formatar_slot(s)}" for s in novos
-            ) + "\nQual fica melhor pra voce?"
-            _add_msg(data, oferta)
-            data["exit"] = None
-            return "agendando"
-        _add_msg(data, "Agora nao encontrei horarios livres. Qual dia e periodo ficam melhores pra voce?")
+            return fase  # ainda sem e-mail: o agente pede o e-mail primeiro
+        livres = slots
+        if not livres:
+            try:
+                livres = await asyncio.to_thread(calendar_client.listar_horarios_livres)
+            except Exception as e:  # noqa: BLE001
+                print(f"[calendar] erro ao listar horarios: {type(e).__name__}")
+                livres = []
+        _remove_msgs(data)
         data["exit"] = None
+        if livres:
+            _add_msg(data, _texto_oferta(livres))
+            return "agendando"
+        _add_msg(data, "No momento nao encontrei horarios livres. Qual dia e periodo ficam melhores pra voce?")
         return fase
 
-    if intencao == "confirmar" and data.get("horario_escolhido"):
-        escolhido = _parse_iso(data["horario_escolhido"])
-        # Casa com um slot oferecido (tolerante a formato). Sem slots no contexto,
-        # aceita o proprio escolhido desde que tenha fuso.
-        alvo = _match_slot(escolhido, slots)
-        if alvo is None and not slots and escolhido and escolhido.tzinfo:
-            alvo = escolhido
+    # 2) Em agendamento: o backend identifica o horario (campo da IA ou texto do
+    #    contato) e so ai confirma de verdade. Nunca deixa a IA "agendar" sozinha.
+    if fase == "agendando":
+        escolhido = _parse_iso(data.get("horario_escolhido") or "")
+        alvo = _match_slot(escolhido, slots) or _match_slot_from_text(payload.text, slots)
         if alvo is not None:
             nome = data.get("nome_contato") or payload.contact.name or "Lead"
             empresa = data.get("empresa")
@@ -336,23 +378,32 @@ async def aplicar_acoes(data: dict, payload: IncomingMessage, fase: str, slots: 
             except Exception as e:  # noqa: BLE001
                 print(f"[calendar] erro ao criar evento: {type(e).__name__}")
                 _remove_msgs(data)
-                _add_msg(data, "Tive um problema ao confirmar o agendamento. Pode tentar outro horario?")
+                data["exit"] = None
+                _add_msg(data, "Tive um problema ao confirmar o agendamento. Pode escolher outro horario?")
                 return "agendando"
             quando = calendar_client.formatar_slot(alvo)
-            nota_exit = f"Agendado: {quando}"
             tid = _tool_id(payload, "agendar_demo")
-            data["exit"] = {"tool": tid or "agendar_demo", "note": nota_exit}
+            data["exit"] = {"tool": tid or "agendar_demo", "note": f"Agendado: {quando}"}
             data["data_agendada"] = quando
             _add_tag(data, "agendado")
+            _remove_msgs(data)
+            _add_msg(
+                data,
+                f"Perfeito! Sua apresentacao esta agendada para {quando}. "
+                "Enviei o convite com os detalhes para o seu e-mail. Ate la!",
+            )
             link = evento.get("htmlLink", "")
             await email_client.notificar(
                 _aviso("QUALIFICADO (agendado)", payload, resumo, f"Reuniao: {quando}\n{link}", data=data)
             )
             return "triagem"
-        # Nao casou: descarta a confirmacao falsa da IA e pede novo horario.
+        # Nao identificou horario valido: nao deixa a IA confirmar sozinha; reoferece.
         _remove_msgs(data)
         data["exit"] = None
-        _add_msg(data, "Nao consegui confirmar esse horario. Pode escolher um dos horarios que te enviei?")
+        if slots:
+            _add_msg(data, "Esse horario nao esta na lista. " + _texto_oferta(slots))
+        else:
+            _add_msg(data, "Qual dia e periodo ficam melhores pra voce?")
         return "agendando"
 
     return fase
