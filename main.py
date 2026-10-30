@@ -499,12 +499,16 @@ async def handle_turn(
         # Vonix enviou e o exit que devolvemos, para investigar rejeicoes.
         if payload.is_test:
             ex = (resultado.get("exit") or {}).get("tool")
-            vs = resultado.get("variables") or {}
-            em = vs.get("enviar_material")
-            tem_rv = "enviar_material" in (payload.return_variables or [])
+            esperadas = ["note", "qualificado", "fase", "enviar_material", "nome_contato",
+                         "empresa", "email_contato", "n_operadores", "canal_atual",
+                         "volume_dia", "dor_principal", "concorrente_atual", "data_agendada"]
+            recebidas = payload.return_variables or []
+            faltando = [v for v in esperadas if v not in recebidas]
             resultado.setdefault("messages", []).append(
                 {"type": "TEXT",
-                 "text": f"[debug] exit={ex} | fase={nova_fase} | enviar_material={em} | rv_tem_enviar_material={tem_rv}"}
+                 "text": (f"[debug] exit={ex} | fase={nova_fase}\n"
+                          f"[debug] return_variables={recebidas}\n"
+                          f"[debug] FALTANDO={faltando or 'nenhuma'}")}
             )
         return resultado
 
