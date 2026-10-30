@@ -441,10 +441,13 @@ async def handle_turn(
         # Diagnostico temporario (apenas em teste): revela os ids das tools que a
         # Vonix enviou e o exit que devolvemos, para investigar rejeicoes.
         if payload.is_test:
-            pares = ", ".join(f"{t.get('name')}:{t.get('id')}" for t in payload.tools) or "(vazio)"
             ex = (resultado.get("exit") or {}).get("tool")
+            vs = resultado.get("variables") or {}
+            em = vs.get("enviar_material")
+            tem_rv = "enviar_material" in (payload.return_variables or [])
             resultado.setdefault("messages", []).append(
-                {"type": "TEXT", "text": f"[debug] tools=[{pares}] | exit={ex} | fase={nova_fase}"}
+                {"type": "TEXT",
+                 "text": f"[debug] exit={ex} | fase={nova_fase} | enviar_material={em} | rv_tem_enviar_material={tem_rv}"}
             )
         return resultado
 
