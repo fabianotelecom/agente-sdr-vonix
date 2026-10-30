@@ -73,5 +73,7 @@ ALERTA_EMAIL_DESTINO=contato@vonix.com.br   # destino dos avisos
 ## 4. Pontos a confirmar
 
 1. Fuso horário da janela 09:00 a 16:00: adotado America/Sao_Paulo.
-2. Dias válidos para agendar: adotado dias úteis (seg a sex).
+2. Dias válidos para agendar: dias úteis (seg a sex), excluindo feriados
+   nacionais do Brasil (biblioteca `holidays`, cobre móveis como Carnaval e
+   Corpus Christi).
 3. Senha de app do Gmail para SMTP: a gerar (2FA + senha de app).

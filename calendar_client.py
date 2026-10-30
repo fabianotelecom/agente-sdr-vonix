@@ -2,7 +2,7 @@
 
 Regras de agendamento do SDR:
 - Janela: 09:00 as 16:00 (inicios validos de 09:00 a 15:00; reunioes de 1h).
-- Somente dias uteis (segunda a sexta).
+- Somente dias uteis (segunda a sexta), excluindo feriados nacionais.
 - Fuso configuravel (padrao America/Sao_Paulo).
 
 As funcoes sao sincronas; chame-as via asyncio.to_thread no webhook.
@@ -13,6 +13,7 @@ from typing import Optional
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
+import holidays
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
@@ -29,6 +30,10 @@ HORA_FIM = 16     # fim da janela (ultimo inicio as 15:00)
 DURACAO_MIN = 60
 
 _tz = ZoneInfo(TIMEZONE)
+
+# Feriados nacionais do Brasil (inclui moveis: Carnaval, Sexta-Feira Santa,
+# Corpus Christi). O objeto expande os anos sob demanda no lookup.
+_feriados = holidays.Brazil()
 
 
 def _service():
@@ -84,7 +89,7 @@ def listar_horarios_livres(max_slots: int = 4, dias_a_frente: int = 10):
     dia = agora.date()
     for _ in range(dias_a_frente + 1):
         data = datetime(dia.year, dia.month, dia.day, tzinfo=_tz)
-        if data.weekday() < 5:  # 0=segunda ... 4=sexta
+        if data.weekday() < 5 and dia not in _feriados:  # dia util, sem feriado nacional
             for hora in range(HORA_INICIO, HORA_FIM):  # 9..15
                 ini = data.replace(hour=hora)
                 fim = ini + timedelta(minutes=DURACAO_MIN)
