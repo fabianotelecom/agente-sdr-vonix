@@ -91,6 +91,9 @@ class GeminiAgentResponse(BaseModel):
             "O fluxo da Vonix envia o arquivo; a conversa continua normalmente (exit nulo)."
         ),
     )
+    nome_contato: Optional[str] = Field(default=None, description="Nome da pessoa com quem fala")
+    empresa: Optional[str] = Field(default=None, description="Nome da empresa do lead")
+    email_contato: Optional[str] = Field(default=None, description="E-mail do contato para o convite")
     n_operadores: Optional[str] = None
     canal_atual: Optional[str] = None
     volume_dia: Optional[str] = None
@@ -199,9 +202,17 @@ def _add_msg(data: dict, texto: str):
     data["messages"].append(texto)
 
 
+def _remove_msgs(data: dict):
+    """Descarta as mensagens que a IA gerou neste turno (ex.: confirmacao falsa)."""
+    data["messages"] = []
+
+
 def _resumo(data: dict, payload: IncomingMessage) -> str:
     partes = [data.get("resumo_lead") or ""]
     campos = {
+        "Empresa": data.get("empresa"),
+        "Contato": data.get("nome_contato") or payload.contact.name,
+        "E-mail": data.get("email_contato"),
         "Operadores": data.get("n_operadores"),
         "Canais": data.get("canal_atual"),
         "Volume/dia": data.get("volume_dia"),
@@ -214,15 +225,34 @@ def _resumo(data: dict, payload: IncomingMessage) -> str:
     return " | ".join(p for p in partes if p).strip()
 
 
-def _aviso(tipo: str, payload: IncomingMessage, resumo: str, extra: str = "") -> str:
-    nome = payload.contact.name or "sem nome"
+def _aviso(tipo: str, payload: IncomingMessage, resumo: str, extra: str = "", data: Optional[dict] = None) -> str:
+    data = data or {}
+    nome = data.get("nome_contato") or payload.contact.name or "sem nome"
+    empresa = data.get("empresa")
+    email = data.get("email_contato")
     fone = payload.contact.phone or "sem telefone"
-    linhas = [f"Lead {tipo} ({payload.channel})", f"Contato: {nome} / {fone}"]
+    cabecalho = f"Contato: {nome}" + (f" ({empresa})" if empresa else "") + f" / {fone}"
+    linhas = [f"Lead {tipo} ({payload.channel})", cabecalho]
+    if email:
+        linhas.append(f"E-mail: {email}")
     if resumo:
         linhas.append(f"Resumo: {resumo}")
     if extra:
         linhas.append(extra)
     return "\n".join(linhas)
+
+
+def _match_slot(escolhido: Optional[datetime], slots: List[datetime]) -> Optional[datetime]:
+    """Casa o horario escolhido (ISO do Gemini) com um slot oferecido, tolerando
+    diferencas de formato/fuso. Compara ano/mes/dia/hora no fuso do slot."""
+    if not escolhido:
+        return None
+    for s in slots:
+        e = escolhido if escolhido.tzinfo else escolhido.replace(tzinfo=s.tzinfo)
+        e = e.astimezone(s.tzinfo)
+        if (s.year, s.month, s.day, s.hour) == (e.year, e.month, e.day, e.hour):
+            return s
+    return None
 
 
 def _parse_iso(s: str) -> Optional[datetime]:
@@ -240,13 +270,13 @@ async def aplicar_acoes(data: dict, payload: IncomingMessage, fase: str, slots: 
     if intencao == "urgente":
         data["exit"] = {"tool": "transferir_vendedor", "note": resumo or None}
         _add_tag(data, "urgente")
-        await email_client.notificar(_aviso("URGENTE", payload, resumo))
+        await email_client.notificar(_aviso("URGENTE", payload, resumo, data=data))
         return "triagem"
 
     if intencao == "desqualificado":
         data["exit"] = None
         _add_tag(data, "desqualificado")
-        await email_client.notificar(_aviso("DESQUALIFICADO", payload, resumo))
+        await email_client.notificar(_aviso("DESQUALIFICADO", payload, resumo, data=data))
         return "triagem"
 
     if intencao == "agendar" and fase != "agendando":
@@ -268,27 +298,38 @@ async def aplicar_acoes(data: dict, payload: IncomingMessage, fase: str, slots: 
 
     if intencao == "confirmar" and data.get("horario_escolhido"):
         escolhido = _parse_iso(data["horario_escolhido"])
-        validos = {s.isoformat() for s in slots}
-        if escolhido and (not validos or escolhido.isoformat() in validos):
-            nome = payload.contact.name or "Lead"
-            titulo = f"Apresentacao Vonix - {nome}"
+        # Casa com um slot oferecido (tolerante a formato). Sem slots no contexto,
+        # aceita o proprio escolhido desde que tenha fuso.
+        alvo = _match_slot(escolhido, slots)
+        if alvo is None and not slots and escolhido and escolhido.tzinfo:
+            alvo = escolhido
+        if alvo is not None:
+            nome = data.get("nome_contato") or payload.contact.name or "Lead"
+            empresa = data.get("empresa")
+            titulo = f"Apresentacao Vonix - {empresa or nome}"
             try:
                 evento = await asyncio.to_thread(
-                    calendar_client.criar_evento, escolhido, titulo, resumo or "Apresentacao Vonix"
+                    calendar_client.criar_evento,
+                    alvo, titulo, resumo or "Apresentacao Vonix",
+                    data.get("email_contato"),
                 )
             except Exception as e:  # noqa: BLE001
                 print(f"[calendar] erro ao criar evento: {type(e).__name__}")
+                _remove_msgs(data)
                 _add_msg(data, "Tive um problema ao confirmar o agendamento. Pode tentar outro horario?")
                 return "agendando"
-            quando = calendar_client.formatar_slot(escolhido)
+            quando = calendar_client.formatar_slot(alvo)
             data["exit"] = {"tool": "agendar_demo", "note": f"{resumo} | Agendado: {quando}".strip(" |")}
             data["data_agendada"] = quando
             _add_tag(data, "agendado")
             link = evento.get("htmlLink", "")
             await email_client.notificar(
-                _aviso("QUALIFICADO (agendado)", payload, resumo, f"Reuniao: {quando}\n{link}")
+                _aviso("QUALIFICADO (agendado)", payload, resumo, f"Reuniao: {quando}\n{link}", data=data)
             )
             return "triagem"
+        # Nao casou: descarta a confirmacao falsa da IA e pede novo horario.
+        _remove_msgs(data)
+        data["exit"] = None
         _add_msg(data, "Nao consegui confirmar esse horario. Pode escolher um dos horarios que te enviei?")
         return "agendando"
 
@@ -302,6 +343,9 @@ def formatar_resposta(data: dict, payload: IncomingMessage, nova_fase: str) -> d
         variaveis = {}
         mapa_simples = {
             "note": data.get("resumo_lead") or exit_data.get("note"),
+            "nome_contato": data.get("nome_contato"),
+            "empresa": data.get("empresa"),
+            "email_contato": data.get("email_contato"),
             "n_operadores": data.get("n_operadores"),
             "canal_atual": data.get("canal_atual"),
             "volume_dia": data.get("volume_dia"),
@@ -330,6 +374,7 @@ def formatar_resposta(data: dict, payload: IncomingMessage, nova_fase: str) -> d
 
     # Remove campos internos que nao fazem parte do contrato Vonix.
     for chave in ("intencao", "horario_escolhido", "resumo_lead", "enviar_material",
+                  "nome_contato", "empresa", "email_contato",
                   "n_operadores", "canal_atual", "volume_dia", "dor_principal",
                   "concorrente_atual", "data_agendada"):
         data.pop(chave, None)

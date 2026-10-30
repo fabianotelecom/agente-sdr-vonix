@@ -53,8 +53,9 @@ agendamento no Google Calendar tambem e feito pelo backend. Veja
 Liste no bloco as variaveis que o agente pode gravar. Minimo recomendado:
 `note` (resumo para o vendedor), `qualificado` (booleano), `fase` (controle
 interno do agendamento) e `enviar_material` (`sim`/`nao`, dispara o envio do
-arquivo). Opcionais: `n_operadores`, `canal_atual`, `volume_dia`,
-`dor_principal`, `concorrente_atual`, `data_agendada`.
+arquivo). Dados do lead: `nome_contato`, `empresa`, `email_contato`. Opcionais:
+`n_operadores`, `canal_atual`, `volume_dia`, `dor_principal`,
+`concorrente_atual`, `data_agendada`.
 
 IMPORTANTE: inclua `fase` em `return_variables`. O backend usa `fase`
 (`triagem` / `agendando`) para saber quando buscar e oferecer horarios do

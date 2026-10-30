@@ -9,6 +9,7 @@ As funcoes sao sincronas; chame-as via asyncio.to_thread no webhook.
 """
 
 import os
+from typing import Optional
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -97,8 +98,12 @@ def listar_horarios_livres(max_slots: int = 4, dias_a_frente: int = 10):
     return slots
 
 
-def criar_evento(inicio: datetime, titulo: str, descricao: str) -> dict:
-    """Cria um evento de 1h e retorna o recurso criado (com htmlLink)."""
+def criar_evento(inicio: datetime, titulo: str, descricao: str,
+                 convidado_email: Optional[str] = None) -> dict:
+    """Cria um evento de 1h e retorna o recurso criado (com htmlLink).
+
+    Se convidado_email vier, adiciona o cliente como convidado e pede ao Google
+    para enviar o convite por e-mail (sendUpdates=all)."""
     service = _service()
     fim = inicio + timedelta(minutes=DURACAO_MIN)
     evento = {
@@ -107,7 +112,11 @@ def criar_evento(inicio: datetime, titulo: str, descricao: str) -> dict:
         "start": {"dateTime": inicio.isoformat(), "timeZone": TIMEZONE},
         "end": {"dateTime": fim.isoformat(), "timeZone": TIMEZONE},
     }
-    return service.events().insert(calendarId=CALENDAR_ID, body=evento).execute()
+    params = {"calendarId": CALENDAR_ID, "body": evento}
+    if convidado_email:
+        evento["attendees"] = [{"email": convidado_email}]
+        params["sendUpdates"] = "all"
+    return service.events().insert(**params).execute()
 
 
 _DIAS = ["segunda", "terca", "quarta", "quinta", "sexta", "sabado", "domingo"]
