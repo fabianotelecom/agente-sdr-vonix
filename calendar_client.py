@@ -72,33 +72,50 @@ def _livre(slot_ini: datetime, slot_fim: datetime, ocupados) -> bool:
     return True
 
 
-def listar_horarios_livres(max_slots: int = 4, dias_a_frente: int = 10):
-    """Retorna ate max_slots horarios livres (datetimes tz-aware), em dias uteis,
-    dentro da janela 09:00-16:00, a partir de agora + 1h de antecedencia."""
+def listar_horarios_livres(max_por_dia: int = 2, max_dias: int = 4):
+    """Retorna horarios livres (datetimes tz-aware) espalhados por varios dias
+    uteis (sem feriados), ate max_por_dia por dia e max_dias dias com vaga, na
+    janela 09:00-16:00, a partir de agora + 1h de antecedencia.
+
+    Espalhar por dia (em vez de encher o primeiro dia) garante que o cliente veja
+    opcoes de dias diferentes."""
     service = _service()
     agora = datetime.now(_tz)
     limite = agora + timedelta(hours=1)  # antecedencia minima
 
+    # Olha ate 14 dias corridos para encontrar ate max_dias dias uteis com vaga.
     janela_ini = agora.replace(minute=0, second=0, microsecond=0)
-    janela_fim = (agora + timedelta(days=dias_a_frente)).replace(
+    janela_fim = (agora + timedelta(days=14)).replace(
         hour=HORA_FIM, minute=0, second=0, microsecond=0
     )
     ocupados = _intervalos_ocupados(service, janela_ini, janela_fim)
 
     slots = []
+    dias_com_vaga = 0
     dia = agora.date()
-    for _ in range(dias_a_frente + 1):
+    for _ in range(15):
         data = datetime(dia.year, dia.month, dia.day, tzinfo=_tz)
-        if data.weekday() < 5 and dia not in _feriados:  # dia util, sem feriado nacional
+        if data.weekday() < 5 and dia not in _feriados:  # dia util, sem feriado
+            livres_dia = []
             for hora in range(HORA_INICIO, HORA_FIM):  # 9..15
                 ini = data.replace(hour=hora)
                 fim = ini + timedelta(minutes=DURACAO_MIN)
                 if ini < limite:
                     continue
                 if _livre(ini, fim, ocupados):
-                    slots.append(ini)
-                    if len(slots) >= max_slots:
-                        return slots
+                    livres_dia.append(ini)
+            # Espalha os horarios do dia (ex.: manha e tarde) em vez de pegar so os
+            # primeiros, dando variedade de periodo ao cliente.
+            if len(livres_dia) > max_por_dia:
+                passo = (len(livres_dia) - 1) / (max_por_dia - 1) if max_por_dia > 1 else 0
+                do_dia = [livres_dia[round(i * passo)] for i in range(max_por_dia)]
+            else:
+                do_dia = livres_dia
+            if do_dia:
+                slots.extend(do_dia)
+                dias_com_vaga += 1
+                if dias_com_vaga >= max_dias:
+                    break
         dia = dia + timedelta(days=1)
     return slots
 

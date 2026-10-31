@@ -313,6 +313,7 @@ def _match_slot_from_text(texto: str, slots: List[datetime]) -> Optional[datetim
     dia_idx = next((v for k, v in _DIAS_SEMANA.items() if k in t), None)
     if not horas:
         return None
+    tem_dia = bool(data_dm) or dia_idx is not None
     candidatos = []
     for s in slots:
         if s.hour not in horas:
@@ -322,7 +323,13 @@ def _match_slot_from_text(texto: str, slots: List[datetime]) -> Optional[datetim
         if dia_idx is not None and s.weekday() != dia_idx:
             continue
         candidatos.append(s)
-    return candidatos[0] if candidatos else None
+    if not candidatos:
+        return None
+    # So retorna direto se nao houver ambiguidade de dia. Se o cliente deu apenas a
+    # hora e ela existe em mais de um dia, deixa o Gemini (horario_escolhido) decidir.
+    if len(candidatos) == 1:
+        return candidatos[0]
+    return candidatos[0] if tem_dia else None
 
 
 def _texto_oferta(slots: List[datetime]) -> str:
