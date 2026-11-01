@@ -14,7 +14,7 @@ import time
 import secrets
 import asyncio
 import traceback
-from datetime import datetime
+from datetime import datetime, timedelta, date
 from typing import List, Optional, Dict, Any, Literal
 
 from fastapi import FastAPI, HTTPException, Header
@@ -292,6 +292,85 @@ def _match_slot(escolhido: Optional[datetime], slots: List[datetime]) -> Optiona
 
 _DIAS_SEMANA = {"segunda": 0, "terca": 1, "terça": 1, "quarta": 2, "quinta": 3, "sexta": 4}
 
+_AFIRMATIVOS = (
+    "pode ser", "pode sim", "pode marcar", "pode agendar", "pode confirmar",
+    "fechado", "fechou", "perfeito", "otimo", "ótimo", "beleza", "combinado",
+    "confirmo", "aceito", "isso mesmo", "esse mesmo", "esse horario", "esse horário",
+    "ta bom", "tá bom", "tudo bem", "ta otimo", "bora", "vamos", "sim",
+)
+
+
+def _horas_no_texto(texto: str) -> set:
+    """Extrai horas (11, 11h, 11:00, '11 horas') do texto. Numeros de dd/mm nao contam."""
+    if not texto:
+        return set()
+    t = texto.lower()
+    horas = set(int(h) for h in re.findall(r'(\d{1,2})\s*(?:h|:\s*\d{2}|horas|hrs|hs)', t))
+    m = re.search(r'\b(\d{1,2})/(\d{1,2})', t)
+    dm = (int(m.group(1)), int(m.group(2))) if m else None
+    if not horas:  # fallback: numeros isolados plausiveis como hora comercial
+        for n in re.findall(r'\b(\d{1,2})\b', t):
+            h = int(n)
+            if 7 <= h <= 18 and (not dm or h not in dm):
+                horas.add(h)
+    return horas
+
+
+def _afirmativo(texto: str) -> bool:
+    """True se o texto parece um aceite simples (sem propor outro dia/horario)."""
+    if not texto:
+        return False
+    t = texto.strip().lower()
+    if t in ("ok", "ok!", "okay", "pode", "quero", "sim!", "claro", "aham"):
+        return True
+    return any(a in t for a in _AFIRMATIVOS)
+
+
+def _pediu_fim_de_semana(texto: str) -> bool:
+    if not texto:
+        return False
+    t = texto.lower()
+    return any(p in t for p in ("sabado", "sábado", "domingo", "fim de semana", "final de semana"))
+
+
+def _extrair_dia(texto: str) -> Optional[date]:
+    """Identifica um dia pedido pelo cliente: hoje, amanha, depois de amanha,
+    dia da semana (proxima ocorrencia) ou data dd/mm. Retorna date ou None."""
+    if not texto:
+        return None
+    t = texto.lower()
+    hoje = datetime.now(calendar_client._tz).date()
+    if "depois de amanh" in t:
+        return hoje + timedelta(days=2)
+    if "amanh" in t:
+        return hoje + timedelta(days=1)
+    if re.search(r'\bhoje\b', t):
+        return hoje
+    m = re.search(r'\b(\d{1,2})/(\d{1,2})(?:/(\d{2,4}))?', t)
+    if m:
+        d, mth = int(m.group(1)), int(m.group(2))
+        ano = hoje.year
+        if m.group(3):
+            ano = int(m.group(3))
+            ano += 2000 if ano < 100 else 0
+        try:
+            alvo = date(ano, mth, d)
+        except ValueError:
+            return None
+        if not m.group(3) and alvo < hoje:
+            try:
+                alvo = date(ano + 1, mth, d)
+            except ValueError:
+                return None
+        return alvo
+    for nome, idx in _DIAS_SEMANA.items():
+        if nome in t:
+            delta = (idx - hoje.weekday()) % 7
+            if delta == 0:
+                delta = 7  # "segunda" dito numa segunda = a proxima segunda
+            return hoje + timedelta(days=delta)
+    return None
+
 
 def _match_slot_from_text(texto: str, slots: List[datetime]) -> Optional[datetime]:
     """Tenta identificar, no texto do contato, qual slot ele escolheu. Reconhece
@@ -299,17 +378,11 @@ def _match_slot_from_text(texto: str, slots: List[datetime]) -> Optional[datetim
     if not texto or not slots:
         return None
     t = texto.lower()
-    # hora: padroes explicitos primeiro
-    horas = set(int(h) for h in re.findall(r'(\d{1,2})\s*(?:h|:\s*\d{2}|horas|hrs|hs)', t))
+    horas = _horas_no_texto(texto)
     data_dm = None
     m = re.search(r'\b(\d{1,2})/(\d{1,2})', t)
     if m:
         data_dm = (int(m.group(1)), int(m.group(2)))
-    if not horas:  # fallback: numeros isolados plausiveis como hora comercial
-        for n in re.findall(r'\b(\d{1,2})\b', t):
-            h = int(n)
-            if 7 <= h <= 18 and (not data_dm or h not in data_dm):
-                horas.add(h)
     dia_idx = next((v for k, v in _DIAS_SEMANA.items() if k in t), None)
     if not horas:
         return None
@@ -326,17 +399,26 @@ def _match_slot_from_text(texto: str, slots: List[datetime]) -> Optional[datetim
     if not candidatos:
         return None
     # So retorna direto se nao houver ambiguidade de dia. Se o cliente deu apenas a
-    # hora e ela existe em mais de um dia, deixa o Gemini (horario_escolhido) decidir.
+    # hora e ela existe em mais de um dia, deixa o backend tentar o dia proposto.
     if len(candidatos) == 1:
         return candidatos[0]
     return candidatos[0] if tem_dia else None
 
 
-def _texto_oferta(slots: List[datetime]) -> str:
+def _texto_oferta_unica(slot: datetime) -> str:
+    """Proposta padrao: uma vaga no proximo dia util."""
     return (
-        "Tenho estes horarios disponiveis:\n"
+        f"Tenho esta vaga na agenda: {calendar_client.formatar_slot(slot)}. "
+        "Fica bom pra voce? Se preferir outro dia, e so me dizer qual."
+    )
+
+
+def _texto_oferta_dia(slots: List[datetime]) -> str:
+    """Opcoes de um dia especifico que o cliente pediu."""
+    return (
+        "Para esse dia, tenho estes horarios:\n"
         + "\n".join(f"- {calendar_client.formatar_slot(s)}" for s in slots)
-        + "\nQual fica melhor pra voce?"
+        + "\nQual prefere?"
     )
 
 
@@ -345,6 +427,49 @@ def _parse_iso(s: str) -> Optional[datetime]:
         return datetime.fromisoformat(s)
     except (ValueError, TypeError):
         return None
+
+
+def _parse_date_iso(s: str) -> Optional[date]:
+    try:
+        return date.fromisoformat(s)
+    except (ValueError, TypeError):
+        return None
+
+
+# A fase carrega o "contexto" do agendamento no proximo turno, sem precisar de uma
+# variavel extra na Vonix. Formatos:
+#   "agendando"                         -> sem contexto (vamos pedir preferencia)
+#   "agendando|s|<ISO-datetime>"        -> propusemos UMA vaga (slot) especifica
+#   "agendando|d|<AAAA-MM-DD>"          -> listamos as opcoes de um dia
+def _fase_base(fase: str) -> str:
+    return (fase or "").split("|", 1)[0]
+
+
+def _ctx_slot(fase: str) -> Optional[datetime]:
+    """A vaga unica proposta no turno anterior (se houver)."""
+    partes = (fase or "").split("|")
+    if len(partes) == 3 and partes[1] == "s":
+        return _parse_iso(partes[2])
+    return None
+
+
+def _ctx_dia(fase: str) -> Optional[date]:
+    """O dia em contexto (vaga proposta ou dia listado), para casar hora solta."""
+    partes = (fase or "").split("|")
+    if len(partes) == 3 and partes[1] == "s":
+        dt = _parse_iso(partes[2])
+        return dt.date() if dt else None
+    if len(partes) == 3 and partes[1] == "d":
+        return _parse_date_iso(partes[2])
+    return None
+
+
+def _fase_slot(slot: datetime) -> str:
+    return f"agendando|s|{slot.isoformat()}"
+
+
+def _fase_dia(dia: date) -> str:
+    return f"agendando|d|{dia.isoformat()}"
 
 
 async def aplicar_acoes(data: dict, payload: IncomingMessage, fase: str, slots: List[datetime]) -> str:
@@ -390,33 +515,93 @@ async def aplicar_acoes(data: dict, payload: IncomingMessage, fase: str, slots: 
         return "triagem"
 
     # --- Agendamento: conduzido pelo backend (a IA nao lista nem confirma) ----
-    # 1) Inicio: lead qualificado quer marcar e ja temos o e-mail. O backend
-    #    descarta qualquer horario inventado pela IA e injeta a lista real.
-    if fase != "agendando" and intencao == "agendar":
+    # Regra: por padrao o agente propoe UMA vaga no proximo dia util. So lista
+    # varias opcoes quando o cliente pede um dia especifico (hoje, uma data, um
+    # dia da semana, etc.).
+    fase_base = _fase_base(fase)
+    dia_ctx = _ctx_dia(fase)       # dia em contexto (vaga proposta ou dia listado)
+    slot_ctx = _ctx_slot(fase)     # vaga unica proposta no turno anterior (se houver)
+
+    # 1) Inicio: lead qualificado quer marcar e ja temos o e-mail. Propoe 1 vaga.
+    if fase_base != "agendando" and intencao == "agendar":
         email = data.get("email_contato") or payload.variables.get("email_contato")
         if not email:
             data["exit"] = None
             return fase  # ainda sem e-mail: o agente pede o e-mail primeiro
-        livres = slots
-        if not livres:
-            try:
-                livres = await asyncio.to_thread(calendar_client.listar_horarios_livres)
-            except Exception as e:  # noqa: BLE001
-                print(f"[calendar] erro ao listar horarios: {type(e).__name__}")
-                livres = []
+        proposto = None
+        try:
+            proposto = await asyncio.to_thread(calendar_client.proximo_slot)
+        except Exception as e:  # noqa: BLE001
+            print(f"[calendar] erro ao buscar proximo slot: {type(e).__name__}")
         _remove_msgs(data)
         data["exit"] = None
-        if livres:
-            _add_msg(data, _texto_oferta(livres))
-            return "agendando"
-        _add_msg(data, "No momento nao encontrei horarios livres. Qual dia e periodo ficam melhores pra voce?")
-        return fase
+        if proposto:
+            _add_msg(data, _texto_oferta_unica(proposto))
+            return _fase_slot(proposto)  # guarda a vaga proposta p/ um "pode ser"
+        _add_msg(data, "Qual dia e periodo ficam melhores pra voce? Verifico a agenda e te confirmo.")
+        return "agendando"
 
-    # 2) Em agendamento: o backend identifica o horario (campo da IA ou texto do
-    #    contato) e so ai confirma de verdade. Nunca deixa a IA "agendar" sozinha.
-    if fase == "agendando":
+    # 2) Em agendamento: o backend resolve o horario a partir do texto do cliente
+    #    (dia pedido, hora, aceite) e so ai confirma. Nunca deixa a IA agendar.
+    if fase_base == "agendando":
         escolhido = _parse_iso(data.get("horario_escolhido") or "")
         alvo = _match_slot(escolhido, slots) or _match_slot_from_text(payload.text, slots)
+        horas_txt = _horas_no_texto(payload.text)
+        dia_pedido = _extrair_dia(payload.text)
+
+        # (fds) Cliente pediu fim de semana: nao atendemos; propoe a proxima vaga util.
+        if alvo is None and dia_pedido is None and _pediu_fim_de_semana(payload.text):
+            proposto = None
+            try:
+                proposto = await asyncio.to_thread(calendar_client.proximo_slot)
+            except Exception:  # noqa: BLE001
+                pass
+            _remove_msgs(data)
+            data["exit"] = None
+            if proposto:
+                _add_msg(data, "Atendemos apenas em dias uteis. " + _texto_oferta_unica(proposto))
+                return _fase_slot(proposto)
+            _add_msg(data, "Atendemos apenas em dias uteis. Qual dia util fica melhor pra voce?")
+            return "agendando"
+
+        # (a) So deu a hora, sem dia: usa o dia em contexto (vaga proposta ou dia listado).
+        if alvo is None and horas_txt and dia_pedido is None and dia_ctx is not None:
+            try:
+                livres_dia = await asyncio.to_thread(
+                    calendar_client.horarios_livres_no_dia, dia_ctx
+                )
+            except Exception:  # noqa: BLE001
+                livres_dia = []
+            alvo = next((s for s in livres_dia if s.hour in horas_txt), None)
+            if alvo is None and livres_dia:
+                _remove_msgs(data)
+                data["exit"] = None
+                _add_msg(data, "Nesse horario nao tenho vaga. " + _texto_oferta_dia(livres_dia))
+                return _fase_dia(dia_ctx)
+
+        # (b) Pediu um dia especifico.
+        if alvo is None and dia_pedido is not None:
+            try:
+                livres_dia = await asyncio.to_thread(
+                    calendar_client.horarios_livres_no_dia, dia_pedido
+                )
+            except Exception:  # noqa: BLE001
+                livres_dia = []
+            if horas_txt:  # deu dia + hora
+                alvo = next((s for s in livres_dia if s.hour in horas_txt), None)
+            if alvo is None:
+                _remove_msgs(data)
+                data["exit"] = None
+                if livres_dia:
+                    _add_msg(data, _texto_oferta_dia(livres_dia))
+                    return _fase_dia(dia_pedido)  # guarda o dia em contexto
+                _add_msg(data, "Nesse dia nao tenho horario livre. Quer que eu veja outro dia?")
+                return "agendando"
+
+        # (c) Aceite simples ("pode ser"): so confirma quando havia UMA vaga proposta.
+        if alvo is None and slot_ctx is not None and _afirmativo(payload.text):
+            alvo = _match_slot(slot_ctx, slots) or slot_ctx
+
         if alvo is not None:
             nome = data.get("nome_contato") or payload.contact.name or "Lead"
             empresa = data.get("empresa")
@@ -432,7 +617,7 @@ async def aplicar_acoes(data: dict, payload: IncomingMessage, fase: str, slots: 
                 _remove_msgs(data)
                 data["exit"] = None
                 _add_msg(data, "Tive um problema ao confirmar o agendamento. Pode escolher outro horario?")
-                return "agendando"
+                return _fase_dia(dia_ctx) if dia_ctx else "agendando"
             quando = calendar_client.formatar_slot(alvo)
             tid = _tool_id(payload, "agendar_demo")
             data["exit"] = {"tool": tid or "agendar_demo", "note": f"Agendado: {quando}"}
@@ -452,13 +637,23 @@ async def aplicar_acoes(data: dict, payload: IncomingMessage, fase: str, slots: 
                 _aviso("QUALIFICADO (agendado)", payload, resumo, f"Reuniao: {quando}\n{link}", data=data)
             )
             return "triagem"
-        # Nao identificou horario valido: nao deixa a IA confirmar sozinha; reoferece.
+
+        # Nao resolveu. Se ja tinhamos proposto uma vaga, mantem a proposta; se
+        # tinhamos listado um dia, re-mostra as opcoes; senao, pede a preferencia.
         _remove_msgs(data)
         data["exit"] = None
-        if slots:
-            _add_msg(data, "Esse horario nao esta na lista. " + _texto_oferta(slots))
-        else:
-            _add_msg(data, "Qual dia e periodo ficam melhores pra voce?")
+        if slot_ctx is not None:
+            _add_msg(data, "Sem problema. " + _texto_oferta_unica(slot_ctx))
+            return _fase_slot(slot_ctx)
+        if dia_ctx is not None:
+            try:
+                livres_dia = await asyncio.to_thread(calendar_client.horarios_livres_no_dia, dia_ctx)
+            except Exception:  # noqa: BLE001
+                livres_dia = []
+            if livres_dia:
+                _add_msg(data, _texto_oferta_dia(livres_dia))
+                return _fase_dia(dia_ctx)
+        _add_msg(data, "Qual dia e periodo ficam melhores pra voce? Verifico a agenda e te confirmo.")
         return "agendando"
 
     return fase
@@ -529,11 +724,12 @@ async def handle_turn(
     try:
         fase = str(payload.variables.get("fase") or "triagem")
 
-        # Em fase de agendamento, injeta os horarios livres atuais no contexto.
+        # Em fase de agendamento, carrega a disponibilidade dos proximos dias
+        # apenas para CASAR a escolha do cliente (nao para exibir a lista).
         slots: List[datetime] = []
-        if fase == "agendando":
+        if _fase_base(fase) == "agendando":
             try:
-                slots = await asyncio.to_thread(calendar_client.listar_horarios_livres)
+                slots = await asyncio.to_thread(calendar_client.slots_para_match)
             except Exception as e:  # noqa: BLE001
                 print(f"[calendar] erro ao listar horarios: {type(e).__name__}")
 

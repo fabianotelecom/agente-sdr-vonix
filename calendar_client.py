@@ -72,6 +72,88 @@ def _livre(slot_ini: datetime, slot_fim: datetime, ocupados) -> bool:
     return True
 
 
+def _dia_util(d) -> bool:
+    """True se d (date) e dia de semana e nao e feriado nacional."""
+    return d.weekday() < 5 and d not in _feriados
+
+
+def _slots_livres_do_dia(data_date, ocupados, limite: datetime):
+    """Horarios livres de um dia (date), respeitando janela, antecedencia e ocupados."""
+    data = datetime(data_date.year, data_date.month, data_date.day, tzinfo=_tz)
+    livres = []
+    for hora in range(HORA_INICIO, HORA_FIM):  # 9..15
+        ini = data.replace(hour=hora)
+        fim = ini + timedelta(minutes=DURACAO_MIN)
+        if ini < limite:
+            continue
+        if _livre(ini, fim, ocupados):
+            livres.append(ini)
+    return livres
+
+
+def proximo_slot(dias_offset: int = 1):
+    """Primeiro horario livre a partir de hoje + dias_offset (padrao: amanha),
+    pulando fins de semana e feriados. Retorna 1 datetime tz-aware ou None.
+
+    E a vaga que o agente propoe por padrao (sempre tenta o proximo dia util)."""
+    service = _service()
+    agora = datetime.now(_tz)
+    limite = agora + timedelta(hours=1)
+    janela_ini = agora.replace(minute=0, second=0, microsecond=0)
+    janela_fim = (agora + timedelta(days=21)).replace(
+        hour=HORA_FIM, minute=0, second=0, microsecond=0
+    )
+    ocupados = _intervalos_ocupados(service, janela_ini, janela_fim)
+    dia = agora.date() + timedelta(days=dias_offset)
+    for _ in range(21):
+        if _dia_util(dia):
+            livres = _slots_livres_do_dia(dia, ocupados, limite)
+            if livres:
+                return livres[0]
+        dia = dia + timedelta(days=1)
+    return None
+
+
+def horarios_livres_no_dia(data_date):
+    """Todos os horarios livres de um dia especifico (lista; vazia se nao houver
+    ou se for fim de semana/feriado). Usado quando o cliente pede um dia."""
+    if not _dia_util(data_date):
+        return []
+    service = _service()
+    agora = datetime.now(_tz)
+    limite = agora + timedelta(hours=1)
+    janela_ini = datetime(data_date.year, data_date.month, data_date.day, tzinfo=_tz)
+    janela_fim = janela_ini.replace(hour=HORA_FIM)
+    ocupados = _intervalos_ocupados(service, janela_ini, janela_fim)
+    return _slots_livres_do_dia(data_date, ocupados, limite)
+
+
+def slots_para_match(max_dias: int = 7):
+    """Todos os horarios livres dos proximos max_dias dias uteis (todas as horas).
+    Serve para CASAR a escolha do cliente, nao para exibir."""
+    service = _service()
+    agora = datetime.now(_tz)
+    limite = agora + timedelta(hours=1)
+    janela_ini = agora.replace(minute=0, second=0, microsecond=0)
+    janela_fim = (agora + timedelta(days=max_dias + 7)).replace(
+        hour=HORA_FIM, minute=0, second=0, microsecond=0
+    )
+    ocupados = _intervalos_ocupados(service, janela_ini, janela_fim)
+    slots = []
+    dias = 0
+    dia = agora.date()
+    for _ in range(max_dias + 10):
+        if _dia_util(dia):
+            livres = _slots_livres_do_dia(dia, ocupados, limite)
+            if livres:
+                slots.extend(livres)
+                dias += 1
+                if dias >= max_dias:
+                    break
+        dia = dia + timedelta(days=1)
+    return slots
+
+
 def listar_horarios_livres(max_por_dia: int = 2, max_dias: int = 4):
     """Retorna horarios livres (datetimes tz-aware) espalhados por varios dias
     uteis (sem feriados), ate max_por_dia por dia e max_dias dias com vaga, na

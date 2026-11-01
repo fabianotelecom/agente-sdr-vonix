@@ -68,9 +68,11 @@ backend, não é uma tool do bloco.
 
 ## 7. Regras de agendamento (Calendar)
 
-- Janela: somente entre 09:00 e 16:00 (horário da empresa).
+- Janela: somente entre 09:00 e 16:00 (horário da empresa), dias úteis.
 - Duração: 1 hora por reunião.
-- O agente oferece as opções livres encontradas na agenda; o lead escolhe uma.
+- Por padrão o agente propõe UMA vaga no próximo dia útil (não lista várias).
+- Só lista as opções de um dia quando o lead pede um dia específico (hoje, uma
+  data, um dia da semana). Fim de semana: avisa que só atende em dias úteis.
 - Após criar o evento, confirma o horário ao lead e notifica por e-mail.
 
 ## 8. Tags sugeridas

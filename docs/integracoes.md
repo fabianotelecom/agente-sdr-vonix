@@ -5,11 +5,17 @@ Design das duas integrações de backend do SDR, com as decisões já tomadas.
 ## 1. Google Calendar (agendamento da apresentação)
 
 ### O que o backend faz
-1. Quando o lead qualificado quer agendar, o backend consulta a agenda e lista
-   os horários livres (slots de 1h) entre 09:00 e 16:00 nos próximos dias úteis.
-2. O agente apresenta as opções ao lead pelo WhatsApp.
-3. O lead escolhe; o backend cria o evento de 1 hora e confirma o horário.
+1. Quando o lead qualificado quer agendar (e já deu o e-mail), o backend propõe
+   UMA vaga: o primeiro horário livre do próximo dia útil (slot de 1h, 09:00-16:00).
+2. Se o lead pedir outro dia (hoje, uma data, um dia da semana), o backend consulta
+   a agenda daquele dia e lista as opções livres dele.
+3. O lead aceita a vaga ("pode ser") ou escolhe um horário; o backend cria o evento
+   de 1 hora e confirma. Fim de semana: responde que só atende em dias úteis.
 4. O backend notifica por e-mail (ver seção 2).
+
+O "dia em contexto" (vaga proposta ou dia listado) viaja no próprio valor da
+variável `fase` (`agendando|s|<ISO>` ou `agendando|d|<AAAA-MM-DD>`), para o turno
+seguinte saber a que dia uma hora solta ("as 14h") se refere, sem variável extra.
 
 ### Sobre "usar a Gemini para acessar o Google"
 O Gemini gera a conversa, mas quem acessa a agenda é o backend, via Google
